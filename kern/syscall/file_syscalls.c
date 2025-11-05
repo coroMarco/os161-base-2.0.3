@@ -35,32 +35,34 @@ static void trouble(int fd){
 
 int sys_open(userptr_t path, int openflags, mode_t mode, int *errp){
 
-  size_t len;
-  int fd=0;
+  if(path==NULL) return EFAULT;
 
-  if(path == NULL || path > PATH_MAX){
-    return EFAULT;
-  }
-
-  char *kbuffer = (char*) kmalloc(PATH_MAX*sizeof(char));
-  
-  if(kbuffer == NULL) return ENOMEM;
-
-  int err = copyinstr((const_userptr_t) path,kbuffer,PATH_MAX,&len);
-  if(err){
-    kfree(kbuffer);
-    return EFAULT;
-  }
-
+  size_t file_len;
+  int fd=0,err;
+  char *kfilename=NULL;
   struct vnode *v;
-  err = vfs_open(kbuffer,openflags,mode,&v);
+  struct openfile *of = NULL;
+  file_len=strlen((char*)path);
+
+  *kfilename = (char*) kmalloc(PATH_MAX*sizeof(char));
+  
+  if(kfilename == NULL) return ENOMEM;
+
+
+  err = copyinstr((const_userptr_t) path,kfilename,PATH_MAX,&file_len);
   if(err){
-    kfree(kbuffer);
+    kfree(kfilename);
+    return EFAULT;
+  }
+
+  
+  err = vfs_open(kfilename,openflags,mode,&v); //already handling O_CREATE
+  if(err){
+    kfree(kfilename);
     return err;
   }
-  kfree(kbuffer);
+  kfree(kfilename);
 
-  struct openfile *of = NULL;
   for(int index = 0; index<OPEN_MAX;index++){
     
     if(fileTable[index].vn == NULL)
