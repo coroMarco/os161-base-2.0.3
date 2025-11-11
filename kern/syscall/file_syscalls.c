@@ -165,7 +165,7 @@ sys_read(int fd, userptr_t buf_ptr, size_t size)
 
 int sys_close(int fd){}
 
-int sys_remove(const char* pathname){}
+//int sys_remove(const char* pathname){}
 
 int sys_chdir(const char* pathname){}
 
