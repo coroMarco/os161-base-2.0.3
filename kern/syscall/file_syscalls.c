@@ -83,7 +83,8 @@ int sys_open(userptr_t path, int openflags, mode_t mode, int *errp){
 
   if (fd == OPEN_MAX-1) return EMFILE;
 
-  if(openflags & O_APPEND){ //filtra i bit utili
+  // PLUS: handle O_APPEND 
+  if(openflags & O_APPEND){ //x & y filtra i bit utili
 
     struct stat filestat;
     err = VOP_STAT(curproc->fileTable[fd]->vn,&filestat);
