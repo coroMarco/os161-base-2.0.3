@@ -66,21 +66,19 @@ int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
 
 #if OPT_SYSCALLS
-	#if OPT_FILE
 
-		struct openfile {
-			struct vnode *vn;
-			off_t offset;
-			int flags;
-			unsigned int counter_ref;
-			struct lock *lock;
-		};
+	struct openfile {
+		struct vnode *vn;
+		off_t offset;
+		int flags;
+		unsigned int counter_ref;
+		struct lock *lock;
+	};
 
-		int sys_open(userptr_t path, int openflags, mode_t mode, int *errp);
+	int sys_open(userptr_t path, int openflags, mode_t mode, int *errp);
 
-		int sys_close(int fd);
+	int sys_close(int fd);
 
-	#endif
 
 
 	int sys_write(int fd, userptr_t buf_ptr, size_t size);

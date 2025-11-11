@@ -16,7 +16,7 @@
 #include <kern/stat.h>
 #include <current.h>
 #include <proc.h>
-#include <fcntl.h>
+#include <kern/fcntl.h>
 
 struct openfile fileTable[OPEN_MAX];
 
@@ -171,6 +171,79 @@ int sys_chdir(const char* pathname){}
 
 int sys_getcwd(const char *buf,size_t buflen,int *retval){}
 
-off_t sys_lseek(int fd,off_t pos,int whence,int *retval){}
+off_t sys_lseek(int fd,off_t pos,int whence,int *retval){
+
+      KASSERT(curproc != NULL);
+
+      if(fd<0 || fd >= OPEN_MAX){
+        return EBADF;
+      }else if(curproc->fileTable[fd] == NULL){
+        return EBADF;
+      }
+
+      if(!VOP_ISSEEKABLE(curproc->fileTable[fd]->vn)){
+        return ESPIPE;
+      }
+
+      struct openfile *of= curproc->fileTable[fd];
+
+      lock_acquire(of->lock);
+      
+      int newpos=0;
+      int err;
+      struct stat info;
+      
+      
+      switch(whence){
+        case SEEK_SET:
+
+              newpos=pos;
+              
+              if(pos<0) {
+                lock_release(of->lock);
+                return EINVAL;
+              }
+              
+              of->offset=pos;
+
+            break;
+        case SEEK_CUR:
+            
+              newpos=of->offset+pos;
+              
+              if(newpos<0) {
+                lock_release(of->lock);
+                return EINVAL;
+              }
+
+              of->offset=newpos;
+            
+            break;
+        case SEEK_END:
+
+            err = VOP_STAT(of->vn,&info);
+            if(err){
+              lock_release(of->lock);
+              return err;
+            }
+
+            if(pos<0 && -pos>info.st_size){
+              lock_release(of->lock);
+              return EINVAL;
+            }
+            of->offset=info.st_size-pos;
+          break;
+        default:
+            lock_release(of->lock);
+            return EINVAL;
+          break;     
+      }
+
+      lock_release(of->lock);
+
+      *retval=newpos;
+      return 0;
+      
+}
 
 int sys_dup2(int oldfd,int newfd,int *retval){}
