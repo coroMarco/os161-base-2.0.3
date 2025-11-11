@@ -85,6 +85,11 @@ int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
 	int sys_write(int fd, userptr_t buf_ptr, size_t size);
 	int sys_read(int fd, userptr_t buf_ptr, size_t size);
+	off_t sys_lseek(int fd,off_t pos,int whence,int *retval);
+	//int sys_remove(const char *pathname);
+	int sys_chdir(const char *pathname);
+	int sys_getcwd(const char *buf,size_t buflen,int *retval);	
+	int sys_dup2(int oldfd,int newfd,int *retval);
 	void sys__exit(int status);
 	int sys_waitpid(pid_t pid, userptr_t statusp, int options);
 	pid_t sys_getpid(void);

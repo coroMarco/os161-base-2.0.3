@@ -162,3 +162,15 @@ sys_read(int fd, userptr_t buf_ptr, size_t size)
 
   return (int)size;
 }
+
+int sys_close(int fd){}
+
+int sys_remove(const char* pathname){}
+
+int sys_chdir(const char* pathname){}
+
+int sys_getcwd(const char *buf,size_t buflen,int *retval){}
+
+off_t sys_lseek(int fd,off_t pos,int whence,int *retval){}
+
+int sys_dup2(int oldfd,int newfd,int *retval){}
