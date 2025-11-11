@@ -248,4 +248,36 @@ off_t sys_lseek(int fd,off_t pos,int whence,int *retval){
       
 }
 
-int sys_dup2(int oldfd,int newfd,int *retval){}
+int sys_dup2(int oldfd,int newfd,int *retval){
+
+      struct openfile *of;
+
+      KASSERT(curproc != NULL);
+
+      if(oldfd<0 || oldfd >= OPEN_MAX || newfd<0 || newfd >= OPEN_MAX){
+        return EBADF;
+      }
+
+      if(curproc->fileTable[oldfd] == NULL){
+        return EBADF;
+      }
+
+      if(oldfd == newfd){
+        *retval=newfd;
+        return 0;
+      }
+
+      if(curproc->fileTable[newfd] != NULL){
+        sys_close(newfd);
+        of=NULL;
+      } 
+
+      of = curproc->fileTable[oldfd];
+      lock_acquire(of->lock);
+      of->counter_ref++;
+      lock_release(of->lock);
+      curproc->fileTable[newfd]=of;
+
+      *retval=newfd;
+      return 0;
+}
