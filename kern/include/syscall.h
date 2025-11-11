@@ -77,7 +77,7 @@ int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
 	int sys_open(userptr_t path, int openflags, mode_t mode, int *errp);
 
-	int sys_close(int fd);
+	int sys_close(int fd,int *retval);
 
 
 
