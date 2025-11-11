@@ -163,7 +163,34 @@ sys_read(int fd, userptr_t buf_ptr, size_t size)
   return (int)size;
 }
 
-int sys_close(int fd){}
+int sys_close(int fd){
+  
+      if (fd < 0 || fd >= OPEN_MAX || curproc->fileTable[fd] == NULL) {
+        return EBADF;
+      }
+
+      struct openfile *of= curproc->fileTable[fd];
+      lock_acquire(of->lock);
+
+      curproc->fileTable[fd]=NULL;
+      --of->counter_ref;
+      
+      if(of->counter_ref>0){
+        lock_release(of->lock);
+        return 0;
+      }
+
+      struct vnode *vn = of->vn;
+      of->vn=NULL;
+      
+      lock_release(of->lock);
+      
+      int err = vfs_close(vn);
+      
+      kfree(of);
+      return err;
+    
+}
 
 int sys_remove(const char* pathname){
   return 0;
@@ -177,9 +204,7 @@ off_t sys_lseek(int fd,off_t pos,int whence,int *retval){
 
       KASSERT(curproc != NULL);
 
-      if(fd<0 || fd >= OPEN_MAX){
-        return EBADF;
-      }else if(curproc->fileTable[fd] == NULL){
+      if (fd < 0 || fd >= OPEN_MAX || curproc->fileTable[fd] == NULL) {
         return EBADF;
       }
 
