@@ -177,11 +177,10 @@ off_t sys_lseek(int fd,off_t pos,int whence,int *retval){
 
       KASSERT(curproc != NULL);
 
-      if(fd<0 || fd >= OPEN_MAX){
-        return EBADF;
-      }else if(curproc->fileTable[fd] == NULL){
+      if(fd<0 || fd >= OPEN_MAX || curproc->fileTable[fd]==NULL){
         return EBADF;
       }
+      
 
       if(!VOP_ISSEEKABLE(curproc->fileTable[fd]->vn)){
         return ESPIPE;
@@ -189,36 +188,31 @@ off_t sys_lseek(int fd,off_t pos,int whence,int *retval){
 
       struct openfile *of= curproc->fileTable[fd];
 
+      int err;
+      struct stat info;
+
+
       lock_acquire(of->lock);
       
       int newpos=0;
-      int err;
-      struct stat info;
-      
-      
       switch(whence){
         case SEEK_SET:
-
-              newpos=pos;
-              
+     
               if(pos<0) {
                 lock_release(of->lock);
                 return EINVAL;
               }
-              
-              of->offset=pos;
+              newpos=pos;
 
             break;
         case SEEK_CUR:
             
-              newpos=of->offset+pos;
-              
-              if(newpos<0) {
+              if(((pos<0) && (of->offset + pos <0)) || (pos > 0 && retval+pos<retval)){ {
                 lock_release(of->lock);
                 return EINVAL;
               }
 
-              of->offset=newpos;
+              newpos=of->offset+pos;
             
             break;
         case SEEK_END:
@@ -229,17 +223,21 @@ off_t sys_lseek(int fd,off_t pos,int whence,int *retval){
               return err;
             }
 
-            if(pos<0 && -pos>info.st_size){
-              lock_release(of->lock);
-              return EINVAL;
-            }
-            of->offset=info.st_size-pos;
+            //vado oltre inizio o oltre fine
+             if(((pos<0) && (of->offset+pos <0)) || (pos > 0 && of->offset+pos<of->offset)){ {
+                lock_release(of->lock);
+                return EINVAL;
+              }
+            newpos=info.st_size-pos;
           break;
         default:
             lock_release(of->lock);
             return EINVAL;
-          break;     
+          break; 
+            }   
       }
+
+      of->offset=newpos;
 
       lock_release(of->lock);
 
