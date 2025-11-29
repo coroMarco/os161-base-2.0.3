@@ -171,7 +171,42 @@ int sys_remove(const char* pathname){
 
 int sys_chdir(const char* pathname){}
 
-int sys_getcwd(const char *buf,size_t buflen,int *retval){}
+int sys_getcwd(const char *buf,size_t buflen,int *retval){
+
+  struct vnode *cwd;
+  char kbuf[PATH_MAX];
+  size_t len;
+  int result;
+
+  if(buf==0){
+    return EFAULT;
+  }
+  if(buflen==0){
+    return EINVAL;
+  }
+
+  cwd = curproc->p_cwd;
+  if(cwd==NULL) return ENOENT;
+
+  //costruisce pathname assoluto della current working dire
+  result = vfs_getcwd(kbuf,sizeof(kbuf));
+  
+  if(result) return result;
+
+  len = strlen(kbuf);
+
+  //lunghezza path maggiore buf utente -> err
+  if(len>buflen) return ENAMETOOLONG;
+
+  // copia nel buffer utente, escluso '\0'
+  result=copyout(kbuf,buf,len);
+  if(result) return result;
+
+  *retval=len;
+
+  return 0;
+
+}
 
 off_t sys_lseek(int fd,off_t pos,int whence,int *retval){
 
