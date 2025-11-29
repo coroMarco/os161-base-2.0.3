@@ -169,7 +169,32 @@ int sys_remove(const char* pathname){
   return 0;
 }
 
-int sys_chdir(const char* pathname){}
+int sys_chdir(const char* pathname){
+  
+  KASSERT(curthread!=NULL);
+  KASSERT(curthread->t_proc!=NULL);
+
+
+  char *kpath;
+  int result;
+
+  if(pathname==NULL) return EFAULT;
+
+  kpath = (char*)kmalloc(PATH_MAX*sizeof(char));
+  if(kpath == NULL) return ENOMEM;
+
+  result = copyinstr((const_userptr_t)pathname,kpath,PATH_MAX,NULL);
+  if(result){
+    kfree(kpath);
+    return result;
+  }
+
+  //open dir pointed by path
+  result = vfs_chdir(kpath);
+  kfree(kpath);
+
+  return result;
+}
 
 int sys_getcwd(const char *buf,size_t buflen,int *retval){}
 
