@@ -182,9 +182,52 @@ static struct proc *proc_create(const char *name)
 	return proc;
 }
 
+int remove_child_from_list(struct proc*proc,pid_t child_pid){
+	struct child_list* app=proc->children_list;
+	struct child_list* prev_child=NULL;
+
+
+	while(app!=NULL){
+		if(app->child_pid==child_pid){
+			if(prev_child==NULL)
+			//è il primo nodo della lista
+				proc->children_list=app->next_child;
+			else
+			//è un nodo in mezzo o alla fine
+				prev_child->next_child=app->next_child;
+			kfree(app);
+			return 0;
+		}
+		prev_child=app;
+		app=app->next_child;
+	}
+	
+	return -1;
+}
 static int proc_deinit(struct proc *proc)
 {
-	
+	spinlock_acquire(&processTable.lk);
+
+	int index=proc->p_pid;
+	if(index<0 || index>MAX_PROC || processTable.proc[index]!=proc) {
+		return -1;
+	}
+
+	processTable.proc[index]=NULL;
+
+	cv_destroy(proc->p_cv);
+	lock_destroy(proc->p_lock);
+	spinlock_release(&processTable.lk);	
+
+	if(proc->p_parent!=-1){
+		parent_proc=proc_search_pid(proc->p_parent);
+		if(proc->p_parent==kproc->p_pid)	parent_proc=kproc;
+		if(parent_proc==NULL) return -1;
+
+		if(remove_child_from_list(parent_proc,proc->p_pid)==-1) return -1;
+
+		return 0;
+	}
 }
 /*
  * Destroy a proc structure.
