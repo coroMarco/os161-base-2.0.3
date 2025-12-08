@@ -458,8 +458,14 @@ void proc_signal_end(struct proc *proc)
 #endif
 }
 
+// start new generated thread
+void call_enter_forked_process(void *tfv,unsigned long dummy){
 
-void call_enter_forked_process(void *tfv,unsigned long dummy){}
+	(void) dummy;
+	enter_forked_process((struct trapframe *) tfv);
+
+	panic("enter_forked_process returned UNEXPECTED\n");
+}
 
 int find_valid_pid(void){}
 
