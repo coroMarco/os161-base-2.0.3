@@ -176,9 +176,15 @@ static struct proc *proc_create(const char *name)
 	proc->p_cwd = NULL;
 
 	proc_init_waitpid(proc,name);
-#if OPT_FILE
-        bzero(proc->fileTable,OPEN_MAX*sizeof(struct openfile *));
-#endif
+
+    bzero(proc->fileTable,OPEN_MAX*sizeof(struct openfile *));
+
+	if(proc_init(proc,name)<=0){
+		kfree(proc->p_name);
+		kfree(proc);
+		return NULL;
+	}
+
 	return proc;
 }
 
