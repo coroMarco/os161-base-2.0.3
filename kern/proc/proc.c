@@ -182,6 +182,10 @@ static struct proc *proc_create(const char *name)
 	return proc;
 }
 
+static int proc_deinit(struct proc *proc)
+{
+	
+}
 /*
  * Destroy a proc structure.
  *
@@ -267,7 +271,7 @@ void proc_destroy(struct proc *proc)
 	if(proc_deinit(proc) != 0) {
 		panic("proc_destroy: proc_deinit failed\n");
 	}
-	
+
 	proc_end_waitpid(proc);
 
 	kfree(proc->p_name);
