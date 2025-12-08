@@ -73,16 +73,16 @@ struct proc *kproc;
  * Initialize support for pid/waitpid.
  */
 struct proc *proc_search_pid(pid_t pid) {
-#if OPT_WAITPID
-  struct proc *p;
-  KASSERT(pid>=0&&pid<MAX_PROC);
-  p = processTable.proc[pid];
-  KASSERT(p->p_pid==pid);
-  return p;
-#else
-  (void)pid;
-  return NULL;
-#endif
+	if (pid <= 0 || pid > PROC_MAX) {
+		return NULL;
+	}
+
+	struct proc *proc = processTable.proc[pid];
+	if (proc->p_pid != pid) {
+		return NULL;
+	}
+
+	return proc;
 }
 
 /*
