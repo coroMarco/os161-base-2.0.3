@@ -477,6 +477,63 @@ void proc_signal_end(struct proc *proc)
 }
 
 
+static int proc_init(struct proc *p, const char *name)
+{
+	int idx;
+
+	KASSERT(p != NULL);
+
+	/* circular search for a free slot in the process table */
+	spinlock_acquire(&processTable.lk);
+
+	idx = processTable.last_pid + 1;
+	if (idx > MAX_PROC) {
+		idx = 1; /* pid 0 reserved for kernel */
+	}
+
+	p->p_pid = -1;
+	while (idx != processTable.last_pid) {
+		if (processTable.proc[idx] == NULL) {
+			processTable.proc[idx] = p;
+			processTable.last_pid = idx;
+			p->p_pid = idx;
+			break;
+		}
+		idx++;
+		if (idx > MAX_PROC) {
+			idx = 1;
+		}
+	}
+
+	spinlock_release(&processTable.lk);
+
+	if (p->p_pid <= 0) {
+		return p->p_pid; /* no slot found */
+	}
+
+	/* initialize bookkeeping */
+	p->p_status = 0;
+	p->parent_pid = -1;
+	p->children_list = NULL;
+
+	/* create sync primitives named after the process */
+	p->p_cv = cv_create(name);
+	p->p_locklock = lock_create(name);
+	if (p->p_cv == NULL || p->p_locklock == NULL) {
+		/* cleanup: remove proc from table */
+		spinlock_acquire(&processTable.lk);
+		if (p->p_pid > 0 && processTable.proc[p->p_pid] == p) {
+			processTable.proc[p->p_pid] = NULL;
+		}
+		spinlock_release(&processTable.lk);
+
+		p->p_pid = -1;
+		return -1;
+	}
+
+	return p->p_pid;
+}
+
 void call_enter_forked_process(void *tfv,unsigned long dummy){}
 
 int find_valid_pid(void){}
