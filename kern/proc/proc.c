@@ -487,20 +487,45 @@ void proc_remove(pid_t pid){}
 
 int add_new_child(struct proc* proc,pid_t child_pid){}
 
-int destroy_child_from_list(struct proc*proc,pid_t child_pic){}
+int destroy_child_from_list(struct proc*proc,pid_t child_pic){
+	struct child_list *prev = NULL;
+	struct child_list *cur;
+
+	if (proc == NULL) {
+		return -1;
+	}
+
+	cur = proc->children_list;
+	while (cur != NULL) {
+		if (cur->child_pid == child_pid) {
+			/* unlink node */
+			if (prev == NULL) {
+				proc->children_list = cur->next_child;
+			} else {
+				prev->next_child = cur->next_child;
+			}
+			kfree(cur);
+			return 0;
+		}
+		prev = cur;
+		cur = cur->next_child;
+	}
+
+	return -1; /* child not found */
+}
 
 int is_child(struct proc*proc,pid_t child_pid){}
 
 #if OPT_FILE
 void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
-  int fd;
-  for (fd=0; fd<OPEN_MAX; fd++) {
-    struct openfile *of = psrc->fileTable[fd];
-    pdest->fileTable[fd] = of;
-    if (of != NULL) {
-      /* incr reference count */
-      openfileIncrRefCount(of);
-    }
-  }
+	while(app!=NULL){
+		if(app->child_pid==child_pid){
+			return 0;
+		}
+		app=app->next_child;
+	}
+	
+	return -1;
 }
-#endif
+
+
