@@ -73,16 +73,16 @@ struct proc *kproc;
  * Initialize support for pid/waitpid.
  */
 struct proc *proc_search_pid(pid_t pid) {
-#if OPT_WAITPID
-  struct proc *p;
-  KASSERT(pid>=0&&pid<MAX_PROC);
-  p = processTable.proc[pid];
-  KASSERT(p->p_pid==pid);
-  return p;
-#else
-  (void)pid;
-  return NULL;
-#endif
+	if (pid <= 0 || pid > PROC_MAX) {
+		return NULL;
+	}
+
+	struct proc *proc = processTable.proc[pid];
+	if (proc->p_pid != pid) {
+		return NULL;
+	}
+
+	return proc;
 }
 
 /*
@@ -176,34 +176,45 @@ static struct proc *proc_create(const char *name)
 	proc->p_cwd = NULL;
 
 	proc_init_waitpid(proc,name);
-#if OPT_FILE
-        bzero(proc->fileTable,OPEN_MAX*sizeof(struct openfile *));
-#endif
+
+    bzero(proc->fileTable,OPEN_MAX*sizeof(struct openfile *));
+
+	if(proc_init(proc,name)<=0){
+		kfree(proc->p_name);
+		kfree(proc);
+		return NULL;
+	}
+
 	return proc;
 }
 
-int remove_child_from_list(struct proc*proc,pid_t child_pid){
-	struct child_list* app=proc->children_list;
-	struct child_list* prev_child=NULL;
 
 
-	while(app!=NULL){
-		if(app->child_pid==child_pid){
-			if(prev_child==NULL)
-			//è il primo nodo della lista
-				proc->children_list=app->next_child;
-			else
-			//è un nodo in mezzo o alla fine
-				prev_child->next_child=app->next_child;
-			kfree(app);
-			return 0;
-		}
-		prev_child=app;
-		app=app->next_child;
-	}
-	
-	return -1;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 static int proc_deinit(struct proc *proc)
 {
 	spinlock_acquire(&processTable.lk);
@@ -525,6 +536,8 @@ int add_new_child(struct proc* proc,pid_t child_pid){}
 int destroy_child_from_list(struct proc*proc,pid_t child_pic){}
 
 int is_child(struct proc*proc,pid_t child_pid){}
+
+int destroy_child_list(struct proc* proc){}
 
 #if OPT_FILE
 void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
