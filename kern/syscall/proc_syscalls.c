@@ -27,7 +27,19 @@ sys__exit(int status){}
 
 int sys_waitpid(pid_t pid, userptr_t statusp, int options){}
 
-pid_t sys_getpid(void){}
+int sys_getpid(pid_t *retpid){
+
+    KASSER(curproc!=NULL);
+    *retpid=curproc->p_pid;
+
+    return 0;
+}
+
+int sys_getppid(pid_t *retpid){
+    *retpid = (int) curproc->parent_pid;
+    return 0;
+}
+
 
 int sys_fork(struct trapframe *ctf, pid_t *retval) {}
 
