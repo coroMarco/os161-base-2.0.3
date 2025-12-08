@@ -50,18 +50,19 @@
 #include <vnode.h>
 #include <syscall.h>
 
-#if OPT_WAITPID
 #include <synch.h>
+#include <kern/fcntl.h>
+#include <vfs.h>
+
 
 #define MAX_PROC 100
 static struct _processTable {
   int active;           /* initial value 0 */
   struct proc *proc[MAX_PROC+1]; /* [0] not used. pids are >= 1 */
-  int last_i;           /* index of last allocated pid */
+  int last_pid;           /* index of last allocated pid */
   struct spinlock lk;	/* Lock for this table */
 } processTable;
 
-#endif
 /*
  * The process for the kernel; this holds all the kernel-only threads.
  */
@@ -71,8 +72,7 @@ struct proc *kproc;
  * G.Cabodi - 2019
  * Initialize support for pid/waitpid.
  */
-struct proc *
-proc_search_pid(pid_t pid) {
+struct proc *proc_search_pid(pid_t pid) {
 #if OPT_WAITPID
   struct proc *p;
   KASSERT(pid>=0&&pid<MAX_PROC);
@@ -89,8 +89,7 @@ proc_search_pid(pid_t pid) {
  * G.Cabodi - 2019
  * Initialize support for pid/waitpid.
  */
-static void
-proc_init_waitpid(struct proc *proc, const char *name) {
+static void proc_init_waitpid(struct proc *proc, const char *name) {
 #if OPT_WAITPID
   /* search a free index in table using a circular strategy */
   int i;
@@ -129,8 +128,7 @@ proc_init_waitpid(struct proc *proc, const char *name) {
  * G.Cabodi - 2019
  * Terminate support for pid/waitpid.
  */
-static void
-proc_end_waitpid(struct proc *proc) {
+static void proc_end_waitpid(struct proc *proc) {
 #if OPT_WAITPID
   /* remove the process from the table */
   int i;
@@ -154,9 +152,7 @@ proc_end_waitpid(struct proc *proc) {
 /*
  * Create a proc structure.
  */
-static
-struct proc *
-proc_create(const char *name)
+static struct proc *proc_create(const char *name)
 {
 	struct proc *proc;
 
@@ -192,8 +188,7 @@ proc_create(const char *name)
  * Note: nothing currently calls this. Your wait/exit code will
  * probably want to do so.
  */
-void
-proc_destroy(struct proc *proc)
+void proc_destroy(struct proc *proc)
 {
 	/*
 	 * You probably want to destroy and null out much of the
@@ -278,8 +273,7 @@ proc_destroy(struct proc *proc)
 /*
  * Create the process structure for the kernel.
  */
-void
-proc_bootstrap(void)
+void proc_bootstrap(void)
 {
 	kproc = proc_create("[kernel]");
 	if (kproc == NULL) {
@@ -299,8 +293,7 @@ proc_bootstrap(void)
  * It will have no address space and will inherit the current
  * process's (that is, the kernel menu's) current directory.
  */
-struct proc *
-proc_create_runprogram(const char *name)
+struct proc *proc_create_runprogram(const char *name)
 {
 	struct proc *newproc;
 
@@ -339,8 +332,7 @@ proc_create_runprogram(const char *name)
  * the timer interrupt context switch, and any other implicit uses
  * of "curproc".
  */
-int
-proc_addthread(struct proc *proc, struct thread *t)
+int proc_addthread(struct proc *proc, struct thread *t)
 {
 	int spl;
 
@@ -366,8 +358,7 @@ proc_addthread(struct proc *proc, struct thread *t)
  * the timer interrupt context switch, and any other implicit uses
  * of "curproc".
  */
-void
-proc_remthread(struct thread *t)
+void proc_remthread(struct thread *t)
 {
 	struct proc *proc;
 	int spl;
@@ -393,8 +384,7 @@ proc_remthread(struct thread *t)
  * some other method to make this safe. Otherwise the returned address
  * space might disappear under you.
  */
-struct addrspace *
-proc_getas(void)
+struct addrspace * proc_getas(void)
 {
 	struct addrspace *as;
 	struct proc *proc = curproc;
@@ -413,8 +403,7 @@ proc_getas(void)
  * Change the address space of (the current) process. Return the old
  * one for later restoration or disposal.
  */
-struct addrspace *
-proc_setas(struct addrspace *newas)
+struct addrspace * proc_setas(struct addrspace *newas)
 {
 	struct addrspace *oldas;
 	struct proc *proc = curproc;
@@ -431,9 +420,7 @@ proc_setas(struct addrspace *newas)
 
 
         /* G.Cabodi - 2019 - support for waitpid */
-int 
-proc_wait(struct proc *proc)
-{
+int  proc_wait(struct proc *proc){
 #if OPT_WAITPID
         int return_status;
         /* NULL and kernel proc forbidden */
@@ -460,8 +447,7 @@ proc_wait(struct proc *proc)
 
 
 /* G.Cabodi - 2019 - support for waitpid */
-void
-proc_signal_end(struct proc *proc)
+void proc_signal_end(struct proc *proc)
 {
 #if USE_SEMAPHORE_FOR_WAITPID
       V(proc->p_sem);
@@ -472,9 +458,23 @@ proc_signal_end(struct proc *proc)
 #endif
 }
 
+
+void call_enter_forked_process(void *tfv,unsigned long dummy){}
+
+int find_valid_pid(void){}
+
+int prod_add(pid_t pid,struct proc *proc){}
+
+void proc_remove(pid_t pid){}
+
+int add_new_child(struct proc* proc,pid_t child_pid){}
+
+int destroy_child_from_list(struct proc*proc,pid_t child_pic){}
+
+int is_child(struct proc*proc,pid_t child_pid){}
+
 #if OPT_FILE
-void 
-proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
+void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
   int fd;
   for (fd=0; fd<OPEN_MAX; fd++) {
     struct openfile *of = psrc->fileTable[fd];
