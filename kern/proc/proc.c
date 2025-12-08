@@ -57,7 +57,7 @@
 
 #define MAX_PROC 100
 static struct _processTable {
-  int active;           /* initial value 0 */
+  int is_active;           /* initial value 0 */
   struct proc *proc[MAX_PROC+1]; /* [0] not used. pids are >= 1 */
   int last_pid;           /* index of last allocated pid */
   struct spinlock lk;	/* Lock for this table */
@@ -461,7 +461,38 @@ void proc_signal_end(struct proc *proc)
 
 void call_enter_forked_process(void *tfv,unsigned long dummy){}
 
-int find_valid_pid(void){}
+//function return:
+// -1 error
+// index pid free
+int find_valid_pid(void){
+
+	int index=-1;
+	if(processTable.last_pid+1>PROC_MAX){
+		index=processTable.last_pid = 1;
+	}
+	else{
+		index=processTable.last_pid++;
+	}
+
+	while(index!=processTable.last_pid){
+		if(processTable.proc[index]==NULL) break;
+		
+		index++;
+		
+		if(index>PROC_MAX) {
+			index=1;
+		}else{
+			index;
+		}
+
+		return index;
+	}
+
+	if(index==processTable.last_pid) return -1;
+
+	return index;
+}
+
 
 int prod_add(pid_t pid,struct proc *proc){}
 
