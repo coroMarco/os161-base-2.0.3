@@ -219,6 +219,8 @@ static int proc_deinit(struct proc *proc)
 	lock_destroy(proc->p_lock);
 	spinlock_release(&processTable.lk);	
 
+	if(destroy_childe_list(proc)==-1) return -1;
+	
 	if(proc->p_parent!=-1){
 		parent_proc=proc_search_pid(proc->p_parent);
 		if(proc->p_parent==kproc->p_pid)	parent_proc=kproc;
