@@ -463,7 +463,19 @@ void call_enter_forked_process(void *tfv,unsigned long dummy){}
 
 int find_valid_pid(void){}
 
-int prod_add(pid_t pid,struct proc *proc){}
+// Add the given process to the process table, at the given index.
+// 0 success, -1 error
+int prod_add(pid_t pid,struct proc *proc){
+
+	if(pid<=0 || pid>PROC_MAX+1 || proc==NULL) return -1;
+
+	spinlock_acquire(&processTable.lk);
+		processTable.proc[pid]=proc;
+		processTable.last_pid=pid;
+	spinlock_release(&processTable.lk);
+
+	return 0;
+}
 
 void proc_remove(pid_t pid){}
 
