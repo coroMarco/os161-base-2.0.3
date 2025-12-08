@@ -489,7 +489,25 @@ int add_new_child(struct proc* proc,pid_t child_pid){}
 
 int destroy_child_from_list(struct proc*proc,pid_t child_pic){}
 
-int is_child(struct proc*proc,pid_t child_pid){}
+int is_child(struct proc*proc,pid_t child_pid){
+	
+	struct child_list *cur;
+
+	if (proc == NULL) {
+		return -1;
+	}
+
+	cur = proc->children_list;
+	while (cur != NULL) {
+		if (cur->child_pid == child_pid) {
+			return 0;
+		}
+		cur = cur->next_child;
+	}
+
+	return -1;
+}
+
 
 #if OPT_FILE
 void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
