@@ -188,6 +188,10 @@ static struct proc *proc_create(const char *name)
 	return proc;
 }
 
+static int proc_init(struct proc *proc, const char *name)
+{
+	
+}
 static int proc_deinit(struct proc *proc)
 {
 	
