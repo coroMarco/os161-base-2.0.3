@@ -533,11 +533,45 @@ void proc_remove(pid_t pid){}
 
 int add_new_child(struct proc* proc,pid_t child_pid){}
 
-int destroy_child_from_list(struct proc*proc,pid_t child_pic){}
+int destroy_child_from_list(struct proc *parent, pid_t unused)
+{
+	struct child_list *node;
+	struct proc *child_proc;
+
+	(void)unused;
+
+	if (parent == NULL) {
+		return -1;
+	}
+
+	while ((node = parent->children_list) != NULL) {
+		/* unlink head */
+		parent->children_list = node->next_child;
+
+		/* find the corresponding proc by pid */
+		child_proc = proc_search_pid(node->child_pid);
+		if (child_proc == NULL) {
+			/* still free the node to avoid leaks */
+			kfree(node);
+			return -1;
+		}
+
+		/* detach child from parent */
+		child_proc->parent_pid = -1;
+
+		/* free the list node */
+		node->next_child = NULL;
+		kfree(node);
+	}
+
+	return 0;
+}
 
 int is_child(struct proc*proc,pid_t child_pid){}
 
-int destroy_child_list(struct proc* proc){}
+int destroy_child_list(struct proc* proc){
+	
+}
 
 #if OPT_FILE
 void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
