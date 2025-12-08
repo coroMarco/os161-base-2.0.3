@@ -485,7 +485,42 @@ int prod_add(pid_t pid,struct proc *proc){}
 
 void proc_remove(pid_t pid){}
 
-int add_new_child(struct proc* proc,pid_t child_pid){}
+int add_new_child(struct proc *parent, pid_t child_pid)
+{
+	struct child_list *node, *tail;
+
+	if (parent == NULL) {
+		return -1;
+	}
+
+	/* If the list is empty, create the first element. */
+	if (parent->children_list == NULL) {
+		node = (struct child_list *) kmalloc(sizeof(struct child_list));
+		if (node == NULL) {
+			return -1;
+		}
+		node->child_pid = child_pid;
+		node->next_child = NULL;
+		parent->children_list = node;
+		return 0;
+	}
+
+	/* Otherwise, append a new node at the end of the list. */
+	tail = parent->children_list;
+	while (tail->next_child != NULL) {
+		tail = tail->next_child;
+	}
+
+	node = (struct child_list *) kmalloc(sizeof(struct child_list));
+	if (node == NULL) {
+		return -1;
+	}
+	node->child_pid = child_pid;
+	node->next_child = NULL;
+	tail->next_child = node;
+
+	return 0;
+}
 
 int destroy_child_from_list(struct proc*proc,pid_t child_pic){}
 
