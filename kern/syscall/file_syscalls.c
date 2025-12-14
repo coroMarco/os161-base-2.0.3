@@ -123,44 +123,163 @@ int sys_open(userptr_t path, int openflags, mode_t mode, int *errp){
   return 0;
 }
 
-/*
- * simple file system calls for write/read
- */
-int sys_write(int fd, userptr_t buf_ptr, size_t size)
+
+// sys_write
+// Write up to `buflen` bytes from user buffer `buf` to the file referred by `fd`,
+// starting at the current file offset. The file must be open for writing.
+// On success, *retval is set to the number of bytes actually written and 0 is returned.
+// On error, an appropriate errno value is returned (e.g., EBADF, EFAULT, ENOMEM, EIO).
+ssize_t sys_write(int fd, const void *buf, size_t buflen, int32_t *retval)
 {
-  int i;
-  char *p = (char *)buf_ptr;
+    struct openfile *ofile;
+    struct vnode    *vnode;
+    struct iovec     iov;
+    struct uio       kuio;
+    char            *kbuf;
+    off_t            old_offset;
+    int              err;
 
-  if (fd!=STDOUT_FILENO && fd!=STDERR_FILENO) {
-    kprintf("sys_write supported only to stdout\n");
-    return -1;
-  }
+    // validate file descriptor range
+    if (fd < 0 || fd >= OPEN_MAX) {
+        return EBADF;
+    }
 
-  for (i=0; i<(int)size; i++) {
-    putch(p[i]);
-  }
+    // retrieve open file entry
+    ofile = curproc->fileTable[fd];
+    if (ofile == NULL) {
+        return EBADF;
+    }
 
-  return (int)size;
+    // file must be open for writing
+    if (ofile->mode_open == O_RDONLY) {
+        return EBADF;
+    }
+
+    // validate user buffer pointer
+    if (buf == NULL) {
+        return EFAULT;
+    }
+
+    // nothing to write
+    if (buflen == 0) {
+        *retval = 0;
+        return 0;
+    }
+
+    // allocate kernel buffer
+    kbuf = kmalloc(buflen);
+    if (kbuf == NULL) {
+        return ENOMEM;
+    }
+
+    // copy data from user space to kernel space
+    err = copyin((const_userptr_t)buf, kbuf, buflen);
+    if (err) {
+        kfree(kbuf);
+        return EFAULT;
+    }
+
+    // perform write operation
+    lock_acquire(ofile->lock);
+
+    vnode      = ofile->vn;
+    old_offset = ofile->offset;
+
+    uio_kinit(&iov, &kuio, kbuf, buflen, old_offset, UIO_WRITE);
+    err = VOP_WRITE(vnode, &kuio);
+    if (err) {
+        lock_release(ofile->lock);
+        kfree(kbuf);
+        return err;
+    }
+
+    // update file offset and report bytes written
+    ofile->offset = kuio.uio_offset;
+    *retval       = (int32_t)(kuio.uio_offset - old_offset);
+
+    lock_release(ofile->lock);
+    kfree(kbuf);
+
+    return 0;
 }
 
-int
-sys_read(int fd, userptr_t buf_ptr, size_t size)
+// sys_read
+// Read up to `buflen` bytes from the file referred by `fd` into user buffer `buf`,
+// starting at the current file offset. The file must be open for reading.
+// On success, *retval is set to the number of bytes actually read and 0 is returned.
+// On error, an appropriate errno value is returned (e.g., EBADF, EFAULT, ENOMEM, EIO).
+ssize_t sys_read(int fd, const void *buf, size_t buflen, int32_t *retval)
 {
-  int i;
-  char *p = (char *)buf_ptr;
+    struct openfile *ofile;
+    struct vnode    *vnode;
+    struct iovec     iov;
+    struct uio       kuio;
+    char            *kbuf;
+    size_t           nread;
+    int              err;
 
-  if (fd!=STDIN_FILENO) {
-    kprintf("sys_read supported only to stdin\n");
-    return -1;
-  }
+    // validate file descriptor range
+    if (fd < 0 || fd >= OPEN_MAX) {
+        return EBADF;
+    }
 
-  for (i=0; i<(int)size; i++) {
-    p[i] = getch();
-    if (p[i] < 0) 
-      return i;
-  }
+    // retrieve open file entry
+    ofile = curproc->fileTable[fd];
+    if (ofile == NULL) {
+        return EBADF;
+    }
 
-  return (int)size;
+    // file must be open for reading
+    if (ofile->mode_open == O_WRONLY) {
+        return EBADF;
+    }
+
+    // validate user buffer pointer
+    if (buf == NULL) {
+        return EFAULT;
+    }
+
+    // nothing to read
+    if (buflen == 0) {
+        *retval = 0;
+        return 0;
+    }
+
+    // allocate kernel buffer
+    kbuf = kmalloc(buflen);
+    if (kbuf == NULL) {
+        return ENOMEM;
+    }
+
+    vnode = ofile->vn;
+
+    // perform read operation
+    lock_acquire(ofile->lock);
+
+    uio_kinit(&iov, &kuio, kbuf, buflen, ofile->offset, UIO_READ);
+    err = VOP_READ(vnode, &kuio);
+    if (err) {
+        lock_release(ofile->lock);
+        kfree(kbuf);
+        return err;
+    }
+
+    // update file offset and compute bytes read
+    ofile->offset = kuio.uio_offset;
+    nread         = buflen - kuio.uio_resid;
+    *retval       = (int32_t)nread;
+
+    lock_release(ofile->lock);
+
+    // copy data from kernel buffer to user buffer
+    err = copyout(kbuf, (userptr_t)buf, nread);
+    if (err) {
+        kfree(kbuf);
+        return EFAULT;
+    }
+
+    kfree(kbuf);
+    return 0;
 }
 
 int sys_close(int fd){}
