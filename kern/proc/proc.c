@@ -533,7 +533,26 @@ void proc_remove(pid_t pid){}
 
 int add_new_child(struct proc* proc,pid_t child_pid){}
 
-int destroy_child_from_list(struct proc*proc,pid_t child_pic){}
+int destroy_child_from_list(struct proc*proc,pid_t child_pic){
+struct child_list* app=proc->children_list;
+	struct child_list* prev_child=NULL;
+
+
+	while(app!=NULL){
+		if(app->child_pid==child_pid){
+			if(prev_child==NULL)
+				proc->children_list=app->next_child;
+			else
+				prev_child->next_child=app->next_child;
+			kfree(app);
+			return 0;
+		}
+		prev_child=app;
+		app=app->next_child;
+	}
+	
+	return -1;
+}
 
 int is_child(struct proc*proc,pid_t child_pid){}
 
