@@ -570,7 +570,29 @@ int destroy_child_from_list(struct proc *parent, pid_t unused)
 int is_child(struct proc*proc,pid_t child_pid){}
 
 int destroy_child_list(struct proc* proc){
-	
+	struct child_list* app=proc->children_list;
+    struct proc* child_proc;
+
+
+    while(app!=NULL){
+        proc->children_list=app->next_child;
+
+        /FINDING THE CHILD STRUCTURE/
+        child_proc=proc_search(app->child_pid);
+        if(child_proc==NULL)
+            return -1;
+
+        /SETTING THE PARENT PID AS -1/
+        child_proc->parent_pid=-1;
+
+        /REMOVING THE CHILD/
+        app->next_child=NULL;
+        kfree(app);
+
+        app=proc->children_list;
+    }
+
+    return 0;
 }
 
 #if OPT_FILE
