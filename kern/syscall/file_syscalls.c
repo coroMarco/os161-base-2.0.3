@@ -173,38 +173,49 @@ int sys_chdir(const char* pathname){}
 
 int sys_getcwd(const char *buf,size_t buflen,int *retval){
 
-  struct vnode *cwd;
-  char kbuf[PATH_MAX];
-  size_t len;
-  int result;
+  struct uio uio;
+    struct iovec iov;
+    int result;
+    size_t len;
 
-  if(buf==0){
-    return EFAULT;
-  }
-  if(buflen==0){
-    return EINVAL;
-  }
+    // validate user buffer pointer
+    if (buf == NULL) {
+        return EFAULT;
+    }
 
-  cwd = curproc->p_cwd;
-  if(cwd==NULL) return ENOENT;
+    // buffer length must be non-zero
+    if (buflen == 0) {
+        return EINVAL;
+    }
 
-  //costruisce pathname assoluto della current working dire
-  result = vfs_getcwd(kbuf,sizeof(kbuf));
-  
-  if(result) return result;
+    // current working directory must exist
+    if (curproc->p_cwd == NULL) {
+        return ENOENT;
+    }
 
-  len = strlen(kbuf);
+    // initialize uio to write directly into user space
+    iov.iov_ubase = (userptr_t)buf;
+    iov.iov_len   = buflen;
 
-  //lunghezza path maggiore buf utente -> err
-  if(len>buflen) return ENAMETOOLONG;
+    uio.uio_iov     = &iov;
+    uio.uio_iovcnt  = 1;
+    uio.uio_resid   = buflen;
+    uio.uio_offset  = 0;
+    uio.uio_segflg  = UIO_USERSPACE;
+    uio.uio_rw      = UIO_READ;
+    uio.uio_space   = proc_getas();
 
-  // copia nel buffer utente, escluso '\0'
-  result=copyout(kbuf,buf,len);
-  if(result) return result;
+    // retrieve absolute path of the current working directory
+    result = vfs_getcwd(&uio);
+    if (result) {
+        return result;
+    }
 
-  *retval=len;
+    // compute number of bytes written (including null terminator)
+    len = buflen - uio.uio_resid;
+    *retval = (int)len;
 
-  return 0;
+    return 0;
 
 }
 
