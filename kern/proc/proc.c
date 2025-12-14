@@ -465,7 +465,7 @@ int find_valid_pid(void){}
 
 // Add the given process to the process table, at the given index.
 // 0 success, -1 error
-int prod_add(pid_t pid,struct proc *proc){
+int proc_register_pid(pid_t pid,struct proc *proc){
 
 	if(pid<=0 || pid>PROC_MAX+1 || proc==NULL) return -1;
 
