@@ -230,14 +230,14 @@ static int proc_cleanup(struct proc *proc)
 	lock_destroy(proc->p_lock);
 	spinlock_release(&processTable.lk);	
 
-	if(destroy_childe_list(proc)==-1) return -1;
+	if(destroy_child_list(proc)==-1) return -1;
 	
 	if(proc->p_parent!=-1){
 		parent_proc=proc_search_pid(proc->p_parent);
 		if(proc->p_parent==kproc->p_pid)	parent_proc=kproc;
 		if(parent_proc==NULL) return -1;
 
-		if(remove_child_from_list(parent_proc,proc->p_pid)==-1) return -1;
+		if(destroy_child_from_list(parent_proc,proc->p_pid)==-1) return -1;
 
 		return 0;
 	}
