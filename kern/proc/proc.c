@@ -188,13 +188,59 @@ static struct proc *proc_create(const char *name)
 	return proc;
 }
 
-static int proc_setup(struct proc *proc, const char *name)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+static int proc_cleanup(struct proc *proc)
 {
+	spinlock_acquire(&processTable.lk);
+
+	int index=proc->p_pid;
+	if(index<0 || index>MAX_PROC || processTable.proc[index]!=proc) {
+		return -1;
+	}
+
+	processTable.proc[index]=NULL;
+
+	cv_destroy(proc->p_cv);
+	lock_destroy(proc->p_lock);
+	spinlock_release(&processTable.lk);	
+
+	if(destroy_child_list(proc)==-1) return -1;
 	
-}
-static int proc_deinit(struct proc *proc)
-{
-	
+	if(proc->p_parent!=-1){
+		parent_proc=proc_search_pid(proc->p_parent);
+		if(proc->p_parent==kproc->p_pid)	parent_proc=kproc;
+		if(parent_proc==NULL) return -1;
+
+		if(destroy_child_from_list(parent_proc,proc->p_pid)==-1) return -1;
+
+		return 0;
+	}
 }
 /*
  * Destroy a proc structure.
@@ -278,8 +324,8 @@ void proc_destroy(struct proc *proc)
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
 
-	if(proc_deinit(proc) != 0) {
-		panic("proc_destroy: proc_deinit failed\n");
+	if(proc_cleanup(proc) != 0) {
+		panic("proc_destroy: proc_cleanup failed\n");
 	}
 
 	proc_end_waitpid(proc);
@@ -540,24 +586,91 @@ int find_valid_pid(void){}
 
 int prod_add(pid_t pid,struct proc *proc){}
 
-void proc_remove(pid_t pid){}
+void proc_unregister_pid(pid_t pid){
+	spinlock_acquire(&processTable.lk);
+	processTable.proc[pid] = NULL;
+	spinlock_release(&processTable.lk);
+}
 
 int add_new_child(struct proc* proc,pid_t child_pid){}
 
-int destroy_child_from_list(struct proc*proc,pid_t child_pic){}
+int destroy_child_from_list(struct proc*proc,pid_t child_pic){
+struct child_list* app=proc->children_list;
+	struct child_list* prev_child=NULL;
 
-int is_child(struct proc*proc,pid_t child_pid){}
+
+	while(app!=NULL){
+		if(app->child_pid==child_pid){
+			if(prev_child==NULL)
+				proc->children_list=app->next_child;
+			else
+				prev_child->next_child=app->next_child;
+			kfree(app);
+			return 0;
+		}
+		prev_child=app;
+		app=app->next_child;
+	}
+	
+	return -1;
+}
+
+int proc_is_child(struct proc*proc,pid_t child_pid){
+	
+	struct child_list *cur;
+
+	if (proc == NULL) {
+		return -1;
+	}
+
+	cur = proc->children_list;
+	while (cur != NULL) {
+		if (cur->child_pid == child_pid) {
+			return 0;
+		}
+		cur = cur->next_child;
+	}
+
+	return -1;
+}
+
+
+int destroy_child_list(struct proc* proc){
+	struct child_list* app=proc->children_list;
+    struct proc* child_proc;
+
+
+    while(app!=NULL){
+        proc->children_list=app->next_child;
+
+        /FINDING THE CHILD STRUCTURE/
+        child_proc=proc_search(app->child_pid);
+        if(child_proc==NULL)
+            return -1;
+
+        /SETTING THE PARENT PID AS -1/
+        child_proc->parent_pid=-1;
+
+        /REMOVING THE CHILD/
+        app->next_child=NULL;
+        kfree(app);
+
+        app=proc->children_list;
+    }
+
+    return 0;
+}
 
 #if OPT_FILE
 void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
-  int fd;
-  for (fd=0; fd<OPEN_MAX; fd++) {
-    struct openfile *of = psrc->fileTable[fd];
-    pdest->fileTable[fd] = of;
-    if (of != NULL) {
-      /* incr reference count */
-      openfileIncrRefCount(of);
-    }
-  }
+	while(app!=NULL){
+		if(app->child_pid==child_pid){
+			return 0;
+		}
+		app=app->next_child;
+	}
+	
+	return -1;
 }
-#endif
+
+
