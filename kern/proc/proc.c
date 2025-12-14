@@ -464,7 +464,7 @@ void call_enter_forked_process(void *tfv,unsigned long dummy){}
 //function return:
 // -1 error
 // index pid free
-int find_valid_pid(void){
+int pid_allocate(void){
 
 	int index=-1;
 	if(processTable.last_pid+1>PROC_MAX){
