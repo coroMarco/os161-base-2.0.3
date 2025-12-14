@@ -215,7 +215,7 @@ static struct proc *proc_create(const char *name)
 
 
 
-static int proc_deinit(struct proc *proc)
+static int proc_cleanup(struct proc *proc)
 {
 	spinlock_acquire(&processTable.lk);
 
@@ -324,8 +324,8 @@ void proc_destroy(struct proc *proc)
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
 
-	if(proc_deinit(proc) != 0) {
-		panic("proc_destroy: proc_deinit failed\n");
+	if(proc_cleanup(proc) != 0) {
+		panic("proc_destroy: proc_cleanup failed\n");
 	}
 
 	proc_end_waitpid(proc);
