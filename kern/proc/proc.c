@@ -489,7 +489,7 @@ int add_new_child(struct proc* proc,pid_t child_pid){}
 
 int destroy_child_from_list(struct proc*proc,pid_t child_pic){}
 
-int is_child(struct proc*proc,pid_t child_pid){
+int proc_is_child(struct proc*proc,pid_t child_pid){
 	
 	struct child_list *cur;
 
