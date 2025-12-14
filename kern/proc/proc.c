@@ -189,32 +189,6 @@ static struct proc *proc_create(const char *name)
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 static int proc_cleanup(struct proc *proc)
 {
 	spinlock_acquire(&processTable.lk);
