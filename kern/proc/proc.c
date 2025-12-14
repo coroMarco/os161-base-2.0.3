@@ -465,7 +465,7 @@ int find_valid_pid(void){}
 
 int prod_add(pid_t pid,struct proc *proc){}
 
-void proc_remove(pid_t pid){
+void proc_unregister_pid(pid_t pid){
 	spinlock_acquire(&processTable.lk);
 	processTable.proc[pid] = NULL;
 	spinlock_release(&processTable.lk);
