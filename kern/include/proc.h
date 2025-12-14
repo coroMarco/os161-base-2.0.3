@@ -130,7 +130,7 @@ void proc_signal_end(struct proc *proc);
 void proc_file_table_copy(struct proc *psrc, struct proc *pdest);
 
 //PROG PT.2kern/include/proc.h
-void call_enter_forked_process(void *tfv,unsigned long dummy);
+void child_start_routing(void *tfv,unsigned long dummy);
 int find_valid_pid(void);
 int prod_add(pid_t pid,struct proc *proc);
 void proc_remove(pid_t pid);

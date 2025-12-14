@@ -459,7 +459,7 @@ void proc_signal_end(struct proc *proc)
 }
 
 // start new generated thread
-void call_enter_forked_process(void *tfv,unsigned long dummy){
+void child_start_routing(void *tfv,unsigned long dummy){
 
 	(void) dummy;
 	enter_forked_process((struct trapframe *) tfv);
