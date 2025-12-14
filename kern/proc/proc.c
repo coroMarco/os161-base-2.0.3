@@ -179,7 +179,7 @@ static struct proc *proc_create(const char *name)
 
     bzero(proc->fileTable,OPEN_MAX*sizeof(struct openfile *));
 
-	if(proc_init(proc,name)<=0){
+	if(proc_setup(proc,name)<=0){
 		kfree(proc->p_name);
 		kfree(proc);
 		return NULL;
@@ -188,7 +188,7 @@ static struct proc *proc_create(const char *name)
 	return proc;
 }
 
-static int proc_init(struct proc *proc, const char *name)
+static int proc_setup(struct proc *proc, const char *name)
 {
 	
 }
