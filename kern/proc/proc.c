@@ -188,13 +188,59 @@ static struct proc *proc_create(const char *name)
 	return proc;
 }
 
-static int proc_init(struct proc *proc, const char *name)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+static int proc_cleanup(struct proc *proc)
 {
+	spinlock_acquire(&processTable.lk);
+
+	int index=proc->p_pid;
+	if(index<0 || index>MAX_PROC || processTable.proc[index]!=proc) {
+		return -1;
+	}
+
+	processTable.proc[index]=NULL;
+
+	cv_destroy(proc->p_cv);
+	lock_destroy(proc->p_lock);
+	spinlock_release(&processTable.lk);	
+
+	if(destroy_child_list(proc)==-1) return -1;
 	
-}
-static int proc_deinit(struct proc *proc)
-{
-	
+	if(proc->p_parent!=-1){
+		parent_proc=proc_search_pid(proc->p_parent);
+		if(proc->p_parent==kproc->p_pid)	parent_proc=kproc;
+		if(parent_proc==NULL) return -1;
+
+		if(destroy_child_from_list(parent_proc,proc->p_pid)==-1) return -1;
+
+		return 0;
+	}
 }
 /*
  * Destroy a proc structure.
@@ -278,8 +324,8 @@ void proc_destroy(struct proc *proc)
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
 
-	if(proc_deinit(proc) != 0) {
-		panic("proc_destroy: proc_deinit failed\n");
+	if(proc_cleanup(proc) != 0) {
+		panic("proc_destroy: proc_cleanup failed\n");
 	}
 
 	proc_end_waitpid(proc);
@@ -487,34 +533,35 @@ void proc_remove(pid_t pid){}
 
 int add_new_child(struct proc* proc,pid_t child_pid){}
 
-int destroy_child_from_list(struct proc*proc,pid_t child_pic){
-	struct child_list *prev = NULL;
-	struct child_list *cur;
-
-	if (proc == NULL) {
-		return -1;
-	}
-
-	cur = proc->children_list;
-	while (cur != NULL) {
-		if (cur->child_pid == child_pid) {
-			/* unlink node */
-			if (prev == NULL) {
-				proc->children_list = cur->next_child;
-			} else {
-				prev->next_child = cur->next_child;
-			}
-			kfree(cur);
-			return 0;
-		}
-		prev = cur;
-		cur = cur->next_child;
-	}
-
-	return -1; /* child not found */
-}
+int destroy_child_from_list(struct proc*proc,pid_t child_pic){}
 
 int is_child(struct proc*proc,pid_t child_pid){}
+
+int destroy_child_list(struct proc* proc){
+	struct child_list* app=proc->children_list;
+    struct proc* child_proc;
+
+
+    while(app!=NULL){
+        proc->children_list=app->next_child;
+
+        /FINDING THE CHILD STRUCTURE/
+        child_proc=proc_search(app->child_pid);
+        if(child_proc==NULL)
+            return -1;
+
+        /SETTING THE PARENT PID AS -1/
+        child_proc->parent_pid=-1;
+
+        /REMOVING THE CHILD/
+        app->next_child=NULL;
+        kfree(app);
+
+        app=proc->children_list;
+    }
+
+    return 0;
+}
 
 #if OPT_FILE
 void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
