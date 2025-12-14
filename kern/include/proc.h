@@ -69,32 +69,31 @@ struct vnode;
 #define USE_SEMAPHORE_FOR_WAITPID 1
 #endif
 
+//PROG PT.2
+struct child_list{
+	pid_t child_pid;
+	struct child_list* next_child;
+};
+
 struct proc {
-	char *p_name;			/* Name of this process */
-	struct spinlock p_lock;		/* Lock for this structure */
-	unsigned p_numthreads;		/* Number of threads in this process */
+	char *p_name;
+	struct spinlock p_lock;
+	unsigned p_numthreads;
 
-	/* VM */
-	struct addrspace *p_addrspace;	/* virtual address space */
+	struct addrespace *p_addrsprace;
 
-	/* VFS */
-	struct vnode *p_cwd;		/* current working directory */
+	struct vnode *p_cwd;
 
-	/* add more material here as needed */
-#if OPT_WAITPID
-        /* G.Cabodi - 2019 - implement waitpid: synchro, and exit status */
-        int p_status;                   /* status as obtained by exit() */
-        pid_t p_pid;                    /* process pid */
-#if USE_SEMAPHORE_FOR_WAITPID
-	struct semaphore *p_sem;
-#else
-        struct cv *p_cv;
-        struct lock *p_lock;
-#endif
-#endif
-#if OPT_FILE
-        struct openfile *fileTable[OPEN_MAX];
-#endif
+	struct open *fileTable[OPEN_MAX];
+
+	//PROG PT.2
+	int p_status;
+	pid_t p_pid;
+	pid_t parent_pid;
+	struct child_list* children_list;
+	struct cv *p_cv;
+	struct lock *p_lock;
+
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -127,7 +126,15 @@ int proc_wait(struct proc *proc);
 struct proc *proc_search_pid(pid_t pid);
 /* signal end/exit of process */
 void proc_signal_end(struct proc *proc);
-#if OPT_FILE
+
 void proc_file_table_copy(struct proc *psrc, struct proc *pdest);
-#endif
+
+//PROG PT.2kern/include/proc.h
+void call_enter_forked_process(void *tfv,unsigned long dummy);
+int find_valid_pid(void);
+int prod_add(pid_t pid,struct proc *proc);
+void proc_remove(pid_t pid);
+int add_new_child(struct proc* proc,pid_t child_pid);
+int destroy_child_from_list(struct proc*proc,pid_t child_pic);
+int is_child(struct proc*proc,pid_t child_pid);
 #endif /* _PROC_H_ */
