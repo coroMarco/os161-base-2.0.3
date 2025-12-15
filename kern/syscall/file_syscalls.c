@@ -230,7 +230,7 @@ ssize_t sys_read(int fd, const void *buf, size_t buflen, int32_t *retval)
     }
 
     // file must be open for reading
-    if (ofile->mode_open == O_WRONLY) {
+    if (ofile->flags == O_WRONLY) {
         return EBADF;
     }
 

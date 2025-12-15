@@ -15,7 +15,7 @@
 #include <addrspace.h>
 #include <mips/trapframe.h>
 #include <syscall.h>
-#include "proc_syscalls.h"
+#include "syscall.h"
 #include "exec_support.h"
 
 // Returns the pid of the current process in *retval.

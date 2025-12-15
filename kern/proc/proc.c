@@ -73,7 +73,7 @@ struct proc *kproc;
  * Initialize support for pid/waitpid.
  */
 struct proc *proc_search_pid(pid_t pid) {
-	if (pid <= 0 || pid > PROC_MAX) {
+	if (pid <= 0 || pid > MAX_PROC) {
 		return NULL;
 	}
 
@@ -158,7 +158,7 @@ static struct proc *proc_create(const char *name)
 	}
 
 	proc->p_numthreads = 0;
-	spinlock_init(&proc->p_lock);
+	spinlock_init(&proc->p_spinlk);
 
 	/* VM fields */
 	proc->p_addrespace = NULL;
@@ -179,7 +179,52 @@ static struct proc *proc_create(const char *name)
 	return proc;
 }
 
+static int proc_setup(struct proc *proc,const char *name){
 
+	/* ACQUIRING THE SPINLOCK */
+	spinlock_acquire(&processTable.lk);
+	proc->p_pid = -1;
+
+	/* SEARCH FREE INDEX IN THE TABLE USING CIRCULAR STRATEGY */
+	int index = processTable.last_pid + 1;
+	index = (index > MAX_PROC) ? 1 : index;		// skipping [0] (kernel process)
+	while (index != processTable.last_pid) {
+		if (processTable.proc[index] == NULL) {
+			processTable.proc[index] = proc;
+			processTable.last_pid = index;
+			proc->p_pid = index;
+			break;
+		}
+		index++;
+		index = (index > PROC_MAX) ? 1 : index;
+	}
+
+	/* RELEASING THE SPINLOCK */
+	spinlock_release(&processTable.lk);
+	if (proc->p_pid <= 0) {
+		return proc->p_pid;
+	}
+
+	/* PROCESS STATUS INITIALIZATION */
+	proc->p_status = 0;
+
+	/*SETTING FATHER PID AS -1*/
+	/*FOR THE FIRST PROCESS IT WILL NOT BE CHANGED*/
+	proc->parent_pid=-1;
+
+	/*PROCESS CHILDREN LIST INITIALIZATION*/
+	proc->children_list= NULL;
+
+	/* PROCESS CV AND LOCK INITIALIZATION */
+	proc->p_cv = cv_create(name);
+  	proc->p_locklock = lock_create(name);
+	if (proc->p_cv == NULL || proc->p_locklock == NULL) {
+		return -1;
+	}
+
+	/* TASK COMPLETED SUCCESSFULLY */
+	return proc->p_pid;
+}
 static int proc_cleanup(struct proc *proc)
 {
 	spinlock_acquire(&processTable.lk);
@@ -495,7 +540,7 @@ void call_enter_forked_process(void *tfv,unsigned long dummy){
 int pid_allocate(void){
 
 	int index=-1;
-	if(processTable.last_pid+1>PROC_MAX){
+	if(processTable.last_pid+1>MAX_PROC){
 		index=processTable.last_pid = 1;
 	}
 	else{
@@ -507,7 +552,7 @@ int pid_allocate(void){
 		
 		index++;
 		
-		if(index>PROC_MAX) {
+		if(index>MAX_PROC) {
 			index=1;
 		}else{
 			index;
@@ -526,7 +571,7 @@ int pid_allocate(void){
 // 0 success, -1 error
 int proc_register_pid(pid_t pid,struct proc *proc){
 
-	if(pid<=0 || pid>PROC_MAX+1 || proc==NULL) return -1;
+	if(pid<=0 || pid>MAX_PROC+1 || proc==NULL) return -1;
 
 	spinlock_acquire(&processTable.lk);
 		processTable.proc[pid]=proc;
@@ -628,15 +673,12 @@ int destroy_child_list(struct proc* proc){
     while(app!=NULL){
         proc->children_list=app->next_child;
 
-        /FINDING THE CHILD STRUCTURE/
         child_proc=proc_search(app->child_pid);
         if(child_proc==NULL)
             return -1;
 
-        /SETTING THE PARENT PID AS -1/
         child_proc->parent_pid=-1;
 
-        /REMOVING THE CHILD/
         app->next_child=NULL;
         kfree(app);
 
@@ -646,16 +688,15 @@ int destroy_child_list(struct proc* proc){
     return 0;
 }
 
-#if OPT_FILE
-void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
-	while(app!=NULL){
-		if(app->child_pid==child_pid){
-			return 0;
-		}
-		app=app->next_child;
-	}
-	
-	return -1;
-}
+//void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
+//	while(app!=NULL){
+//		if(app->child_pid==child_pid){
+//			return 0;
+//		}
+//		app=app->next_child;
+//	}
+//	
+//	return -1;
+//}
 
 
