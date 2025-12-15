@@ -4,19 +4,25 @@
  * just works (partially) on stdin/stdout
  */
 
-#include <types.h>
-#include <kern/types.h>
-#include <kern/unistd.h>
-#include <clock.h>
-#include <copyinout.h>
+
 #include <syscall.h>
-#include <lib.h>
-#include <limits.h>
-#include <kern/errno.h>
-#include <kern/stat.h>
-#include <current.h>
+#include <types.h>
 #include <proc.h>
+#include <current.h>
+#include <vnode.h>
+#include <vfs.h>
+#include <uio.h>
+#include <synch.h>
+#include <kern/errno.h>
 #include <kern/fcntl.h>
+#include <kern/stat.h>
+#include <copyinout.h>
+#include <limits.h>
+#include <kern/unistd.h>
+#include <endian.h>
+#include <stat.h>
+#include <lib.h>
+#include <kern/seek.h>
 
 struct openfile fileTable[OPEN_MAX];
 
@@ -28,7 +34,6 @@ static void trouble(int fd){
   if(curproc->fileTable[fd]->vn != NULL){
     vfs_close(curproc->fileTable[fd]->vn);
   }
-
   kfree(curproc->fileTable[fd]);
   curproc->fileTable[fd]=NULL;
 }
@@ -39,12 +44,12 @@ int sys_open(userptr_t path, int openflags, mode_t mode, int *errp){
 
   size_t file_len;
   int fd=0,err;
-  char *kfilename=NULL;
+  char *kfilename;
   struct vnode *v;
   struct openfile *of = NULL;
   file_len=strlen((char*)path);
 
-  *kfilename = (char*) kmalloc(PATH_MAX*sizeof(char));
+  kfilename = (char *) kmalloc(PATH_MAX * sizeof(char));
   
   if(kfilename == NULL) return ENOMEM;
 
@@ -113,7 +118,7 @@ int sys_open(userptr_t path, int openflags, mode_t mode, int *errp){
       return EINVAL;
   }
 
-  curproc->fileTable[fd]->lock=lock_create();
+  curproc->fileTable[fd]->lock=lock_create("lock file");
   if(curproc->fileTable[fd]->lock==NULL){
       trouble(fd);
       return ENOMEM;
@@ -151,7 +156,7 @@ ssize_t sys_write(int fd, const void *buf, size_t buflen, int32_t *retval)
     }
 
     // file must be open for writing
-    if (ofile->mode_open == O_RDONLY) {
+    if (ofile->flags == O_RDONLY) {
         return EBADF;
     }
 
@@ -297,22 +302,22 @@ int sys_close(int fd){
       if(of->counter_ref>0){
         lock_release(of->lock);
         return 0;
+      }else{
+        struct vnode *vn = of->vn;
+        of->vn=NULL;      
+        vfs_close(vn);
       }
-
-      struct vnode *vn = of->vn;
-      of->vn=NULL;
       
       lock_release(of->lock);
-      
-      int err = vfs_close(vn);
-      
       kfree(of);
-      return err;
+      return 0;
     
 }
 
 int sys_remove(const char* pathname){
-  return 0;
+  
+  (void)pathname;
+    return 0;
 }
 
 int sys_chdir(const char* pathname){

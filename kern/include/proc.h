@@ -84,7 +84,7 @@ struct proc {
 
 	struct vnode *p_cwd;
 
-	struct open *fileTable[OPEN_MAX];
+	struct openfile *fileTable[OPEN_MAX];
 
 	//PROG PT.2
 	int p_status;

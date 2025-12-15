@@ -65,7 +65,6 @@ int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
 
-#if OPT_SYSCALLS
 
 	struct openfile {
 		struct vnode *vn;
@@ -77,14 +76,14 @@ int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
 	int sys_open(userptr_t path, int openflags, mode_t mode, int *errp);
 
-	int sys_close(int fd,int *retval);
+	int sys_close(int fd);
 
 
 
-	int sys_write(int fd, userptr_t buf_ptr, size_t size);
-	int sys_read(int fd, userptr_t buf_ptr, size_t size);
+	ssize_t sys_write(int fd, const void *buf, size_t buflen, int32_t *retval);
+	ssize_t sys_read(int fd, const void *buf, size_t buflen, int32_t *retval);
 	off_t sys_lseek(int fd,off_t pos,int whence,int *retval);
-	//int sys_remove(const char *pathname);
+	int sys_remove(const char *pathname);
 	int sys_chdir(const char *pathname);
 	int sys_getcwd(const char *buf,size_t buflen,int *retval);	
 	int sys_dup2(int oldfd,int newfd,int *retval);
@@ -96,4 +95,3 @@ int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 	int sys_execv(const char *progname,char *argv[]);
 #endif
 
-#endif
