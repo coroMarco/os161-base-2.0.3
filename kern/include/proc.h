@@ -77,10 +77,10 @@ struct child_list{
 
 struct proc {
 	char *p_name;
-	struct spinlock p_lock;
+	struct spinlock p_spinlk;
 	unsigned p_numthreads;
 
-	struct addrespace *p_addrsprace;
+	struct addrespace *p_addrespace;
 
 	struct vnode *p_cwd;
 
@@ -135,6 +135,6 @@ int pid_allocate(void);
 int proc_register_pid(pid_t pid, struct proc *proc);
 void proc_unregister_pid(pid_t pid);
 int add_new_child(struct proc* proc,pid_t child_pid);
-int destroy_child_from_list(struct proc*proc,pid_t child_pic);
+int destroy_child_from_list(struct proc*proc,pid_t child_pid);
 int proc_is_child(struct proc*proc,pid_t child_pid);
 #endif /* _PROC_H_ */

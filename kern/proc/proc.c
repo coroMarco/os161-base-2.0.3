@@ -90,17 +90,16 @@ struct proc *proc_search_pid(pid_t pid) {
  * Initialize support for pid/waitpid.
  */
 static void proc_init_waitpid(struct proc *proc, const char *name) {
-#if OPT_WAITPID
   /* search a free index in table using a circular strategy */
   int i;
   spinlock_acquire(&processTable.lk);
-  i = processTable.last_i+1;
+  i = processTable.last_pid+1;
   proc->p_pid = 0;
   if (i>MAX_PROC) i=1;
-  while (i!=processTable.last_i) {
+  while (i!=processTable.last_pid) {
     if (processTable.proc[i] == NULL) {
       processTable.proc[i] = proc;
-      processTable.last_i = i;
+      processTable.last_pid = i;
       proc->p_pid = i;
       break;
     }
@@ -112,16 +111,12 @@ static void proc_init_waitpid(struct proc *proc, const char *name) {
     panic("too many processes. proc table is full\n");
   }
   proc->p_status = 0;
-#if USE_SEMAPHORE_FOR_WAITPID
-  proc->p_sem = sem_create(name, 0);
-#else
+
   proc->p_cv = cv_create(name);
   proc->p_lock = lock_create(name);
-#endif
-#else
+
   (void)proc;
   (void)name;
-#endif
 }
 
 /*
@@ -129,7 +124,6 @@ static void proc_init_waitpid(struct proc *proc, const char *name) {
  * Terminate support for pid/waitpid.
  */
 static void proc_end_waitpid(struct proc *proc) {
-#if OPT_WAITPID
   /* remove the process from the table */
   int i;
   spinlock_acquire(&processTable.lk);
@@ -138,15 +132,12 @@ static void proc_end_waitpid(struct proc *proc) {
   processTable.proc[i] = NULL;
   spinlock_release(&processTable.lk);
 
-#if USE_SEMAPHORE_FOR_WAITPID
-  sem_destroy(proc->p_sem);
-#else
+
   cv_destroy(proc->p_cv);
   lock_destroy(proc->p_lock);
-#endif
-#else
+
   (void)proc;
-#endif
+
 }
 
 /*
@@ -170,7 +161,7 @@ static struct proc *proc_create(const char *name)
 	spinlock_init(&proc->p_lock);
 
 	/* VM fields */
-	proc->p_addrspace = NULL;
+	proc->p_addrespace = NULL;
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
@@ -206,9 +197,9 @@ static int proc_cleanup(struct proc *proc)
 
 	if(destroy_child_list(proc)==-1) return -1;
 	
-	if(proc->p_parent!=-1){
-		parent_proc=proc_search_pid(proc->p_parent);
-		if(proc->p_parent==kproc->p_pid)	parent_proc=kproc;
+	if(proc->parent_pid!=-1){
+		struct proc* parent_proc=proc_search_pid(proc->parent_pid);
+		if(proc->parent_pid==kproc->p_pid)	parent_proc=kproc;
 		if(parent_proc==NULL) return -1;
 
 		if(destroy_child_from_list(parent_proc,proc->p_pid)==-1) return -1;
@@ -248,7 +239,7 @@ void proc_destroy(struct proc *proc)
 	}
 
 	/* VM fields */
-	if (proc->p_addrspace) {
+	if (proc->p_addrespace) {
 		/*
 		 * If p is the current process, remove it safely from
 		 * p_addrspace before destroying it. This makes sure
@@ -289,8 +280,8 @@ void proc_destroy(struct proc *proc)
 			as_deactivate();
 		}
 		else {
-			as = proc->p_addrspace;
-			proc->p_addrspace = NULL;
+			as = proc->p_addrespace;
+			proc->p_addrespace = NULL;
 		}
 		as_destroy(as);
 	}
@@ -320,7 +311,7 @@ void proc_bootstrap(void)
 #if OPT_WAITPID
 	spinlock_init(&processTable.lk);
 	/* kernel process is not registered in the table */
-	processTable.active = 1;
+	processTable.is_active = 1;
 #endif
 }
 
@@ -342,7 +333,7 @@ struct proc *proc_create_runprogram(const char *name)
 
 	/* VM fields */
 
-	newproc->p_addrspace = NULL;
+	newproc->p_addrespace = NULL;
 
 	/* VFS fields */
 
@@ -432,7 +423,7 @@ struct addrspace * proc_getas(void)
 	}
 
 	spinlock_acquire(&proc->p_lock);
-	as = proc->p_addrspace;
+	as = proc->p_addrespace;
 	spinlock_release(&proc->p_lock);
 	return as;
 }
@@ -449,8 +440,8 @@ struct addrspace * proc_setas(struct addrspace *newas)
 	KASSERT(proc != NULL);
 
 	spinlock_acquire(&proc->p_lock);
-	oldas = proc->p_addrspace;
-	proc->p_addrspace = newas;
+	oldas = proc->p_addrespace;
+	proc->p_addrespace = newas;
 	spinlock_release(&proc->p_lock);
 	return oldas;
 }
@@ -466,13 +457,11 @@ int  proc_wait(struct proc *proc){
 	KASSERT(proc != kproc);
 
         /* wait on semaphore or condition variable */ 
-#if USE_SEMAPHORE_FOR_WAITPID
-        P(proc->p_sem);
-#else
+
         lock_acquire(proc->p_lock);
         cv_wait(proc->p_cv);
         lock_release(proc->p_lock);
-#endif
+
         return_status = proc->p_status;
         proc_destroy(proc);
         return return_status;
@@ -487,13 +476,11 @@ int  proc_wait(struct proc *proc){
 /* G.Cabodi - 2019 - support for waitpid */
 void proc_signal_end(struct proc *proc)
 {
-#if USE_SEMAPHORE_FOR_WAITPID
-      V(proc->p_sem);
-#else
+
       lock_acquire(proc->p_lock);
       cv_signal(proc->p_cv);
       lock_release(proc->p_lock);
-#endif
+
 }
 
 void call_enter_forked_process(void *tfv,unsigned long dummy){
@@ -592,7 +579,7 @@ int add_new_child(struct proc *parent, pid_t child_pid)
 	return 0;
 }
 
-int destroy_child_from_list(struct proc*proc,pid_t child_pic){
+int destroy_child_from_list(struct proc*proc,pid_t child_pid){
 struct child_list* app=proc->children_list;
 	struct child_list* prev_child=NULL;
 
