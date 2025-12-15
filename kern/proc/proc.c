@@ -274,6 +274,8 @@ static int proc_cleanup(struct proc *proc)
 
 		return 0;
 	}
+
+	return 0;
 }
 /*
  * Destroy a proc structure.
@@ -552,43 +554,11 @@ void proc_signal_end(struct proc *proc)
 }
 
 void call_enter_forked_process(void *tfv,unsigned long dummy){
+	(void) dummy;
 	struct trapframe *tf = (struct trapframe *)tfv;
 	enter_forked_process(tf);
 	panic("enter_forked_process returned UNEXPECTED\n");
 }
-
-//function return:
-// -1 error
-// index pid free
-int pid_allocate(void){
-
-	int index=-1;
-	if(processTable.last_pid+1>MAX_PROC){
-		index=processTable.last_pid = 1;
-	}
-	else{
-		index=processTable.last_pid++;
-	}
-
-	while(index!=processTable.last_pid){
-		if(processTable.proc[index]==NULL) break;
-		
-		index++;
-		
-		if(index>MAX_PROC) {
-			index=1;
-		}else{
-			index;
-		}
-
-		return index;
-	}
-
-	if(index==processTable.last_pid) return -1;
-
-	return index;
-}
-
 
 // Add the given process to the process table, at the given index.
 // 0 success, -1 error
