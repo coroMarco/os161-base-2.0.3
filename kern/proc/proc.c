@@ -496,7 +496,9 @@ void proc_signal_end(struct proc *proc)
 #endif
 }
 
-
+void call_enter_forked_process(void *tfv,unsigned long dummy){
+	struct trapframe *tf = (struct trapframe *)tfv;
+	enter_forked_process(tf);
 	panic("enter_forked_process returned UNEXPECTED\n");
 }
 
