@@ -132,7 +132,7 @@ void proc_file_table_copy(struct proc *psrc, struct proc *pdest);
 //PROG PT.2kern/include/proc.h
 void call_enter_forked_process(void *tfv,unsigned long dummy);
 int pid_allocate(void);
-int prod_add(pid_t pid,struct proc *proc);
+int proc_register_pid(pid_t pid, struct proc *proc);
 void proc_unregister_pid(pid_t pid);
 int add_new_child(struct proc* proc,pid_t child_pid);
 int destroy_child_from_list(struct proc*proc,pid_t child_pic);
