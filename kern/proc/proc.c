@@ -140,6 +140,52 @@ static void proc_end_waitpid(struct proc *proc) {
 
 }
 
+static int proc_setup(struct proc *proc,const char *name){
+
+	/* ACQUIRING THE SPINLOCK */
+	spinlock_acquire(&processTable.lk);
+	proc->p_pid = -1;
+
+	/* SEARCH FREE INDEX IN THE TABLE USING CIRCULAR STRATEGY */
+	int index = processTable.last_pid + 1;
+	index = (index > MAX_PROC) ? 1 : index;		// skipping [0] (kernel process)
+	while (index != processTable.last_pid) {
+		if (processTable.proc[index] == NULL) {
+			processTable.proc[index] = proc;
+			processTable.last_pid = index;
+			proc->p_pid = index;
+			break;
+		}
+		index++;
+		index = (index > MAX_PROC) ? 1 : index;
+	}
+
+	/* RELEASING THE SPINLOCK */
+	spinlock_release(&processTable.lk);
+	if (proc->p_pid <= 0) {
+		return proc->p_pid;
+	}
+
+	/* PROCESS STATUS INITIALIZATION */
+	proc->p_status = 0;
+
+	/*SETTING FATHER PID AS -1*/
+	/*FOR THE FIRST PROCESS IT WILL NOT BE CHANGED*/
+	proc->parent_pid=-1;
+
+	/*PROCESS CHILDREN LIST INITIALIZATION*/
+	proc->children_list= NULL;
+
+	/* PROCESS CV AND LOCK INITIALIZATION */
+	proc->p_cv = cv_create(name);
+  	proc->p_lock = lock_create(name);
+	if (proc->p_cv == NULL || proc->p_lock == NULL) {
+		return -1;
+	}
+
+	/* TASK COMPLETED SUCCESSFULLY */
+	return proc->p_pid;
+}
 /*
  * Create a proc structure.
  */
@@ -179,52 +225,29 @@ static struct proc *proc_create(const char *name)
 	return proc;
 }
 
-static int proc_setup(struct proc *proc,const char *name){
+int destroy_child_list(struct proc* proc){
+	struct child_list* app=proc->children_list;
+    struct proc* child_proc;
 
-	/* ACQUIRING THE SPINLOCK */
-	spinlock_acquire(&processTable.lk);
-	proc->p_pid = -1;
 
-	/* SEARCH FREE INDEX IN THE TABLE USING CIRCULAR STRATEGY */
-	int index = processTable.last_pid + 1;
-	index = (index > MAX_PROC) ? 1 : index;		// skipping [0] (kernel process)
-	while (index != processTable.last_pid) {
-		if (processTable.proc[index] == NULL) {
-			processTable.proc[index] = proc;
-			processTable.last_pid = index;
-			proc->p_pid = index;
-			break;
-		}
-		index++;
-		index = (index > PROC_MAX) ? 1 : index;
-	}
+    while(app!=NULL){
+        proc->children_list=app->next_child;
 
-	/* RELEASING THE SPINLOCK */
-	spinlock_release(&processTable.lk);
-	if (proc->p_pid <= 0) {
-		return proc->p_pid;
-	}
+        child_proc=proc_search_pid(app->child_pid);
+        if(child_proc==NULL)
+            return -1;
 
-	/* PROCESS STATUS INITIALIZATION */
-	proc->p_status = 0;
+        child_proc->parent_pid=-1;
 
-	/*SETTING FATHER PID AS -1*/
-	/*FOR THE FIRST PROCESS IT WILL NOT BE CHANGED*/
-	proc->parent_pid=-1;
+        app->next_child=NULL;
+        kfree(app);
 
-	/*PROCESS CHILDREN LIST INITIALIZATION*/
-	proc->children_list= NULL;
+        app=proc->children_list;
+    }
 
-	/* PROCESS CV AND LOCK INITIALIZATION */
-	proc->p_cv = cv_create(name);
-  	proc->p_locklock = lock_create(name);
-	if (proc->p_cv == NULL || proc->p_locklock == NULL) {
-		return -1;
-	}
-
-	/* TASK COMPLETED SUCCESSFULLY */
-	return proc->p_pid;
+    return 0;
 }
+
 static int proc_cleanup(struct proc *proc)
 {
 	spinlock_acquire(&processTable.lk);
@@ -332,7 +355,7 @@ void proc_destroy(struct proc *proc)
 	}
 
 	KASSERT(proc->p_numthreads == 0);
-	spinlock_cleanup(&proc->p_lock);
+	spinlock_cleanup(&proc->p_spinlk);
 
 	if(proc_cleanup(proc) != 0) {
 		panic("proc_destroy: proc_cleanup failed\n");
@@ -387,12 +410,12 @@ struct proc *proc_create_runprogram(const char *name)
 	 * (We don't need to lock the new process, though, as we have
 	 * the only reference to it.)
 	 */
-	spinlock_acquire(&curproc->p_lock);
+	spinlock_acquire(&curproc->p_spinlk);
 	if (curproc->p_cwd != NULL) {
 		VOP_INCREF(curproc->p_cwd);
 		newproc->p_cwd = curproc->p_cwd;
 	}
-	spinlock_release(&curproc->p_lock);
+	spinlock_release(&curproc->p_spinlk);
 
 	return newproc;
 }
@@ -412,9 +435,9 @@ int proc_addthread(struct proc *proc, struct thread *t)
 
 	KASSERT(t->t_proc == NULL);
 
-	spinlock_acquire(&proc->p_lock);
+	spinlock_acquire(&proc->p_spinlk);
 	proc->p_numthreads++;
-	spinlock_release(&proc->p_lock);
+	spinlock_release(&proc->p_spinlk);
 
 	spl = splhigh();
 	t->t_proc = proc;
@@ -440,10 +463,10 @@ void proc_remthread(struct thread *t)
 	proc = t->t_proc;
 	KASSERT(proc != NULL);
 
-	spinlock_acquire(&proc->p_lock);
+	spinlock_acquire(&proc->p_spinlk);
 	KASSERT(proc->p_numthreads > 0);
 	proc->p_numthreads--;
-	spinlock_release(&proc->p_lock);
+	spinlock_release(&proc->p_spinlk);
 
 	spl = splhigh();
 	t->t_proc = NULL;
@@ -467,9 +490,9 @@ struct addrspace * proc_getas(void)
 		return NULL;
 	}
 
-	spinlock_acquire(&proc->p_lock);
+	spinlock_acquire(&proc->p_spinlk);
 	as = proc->p_addrespace;
-	spinlock_release(&proc->p_lock);
+	spinlock_release(&proc->p_spinlk);
 	return as;
 }
 
@@ -484,10 +507,10 @@ struct addrspace * proc_setas(struct addrspace *newas)
 
 	KASSERT(proc != NULL);
 
-	spinlock_acquire(&proc->p_lock);
+	spinlock_acquire(&proc->p_spinlk);
 	oldas = proc->p_addrespace;
 	proc->p_addrespace = newas;
-	spinlock_release(&proc->p_lock);
+	spinlock_release(&proc->p_spinlk);
 	return oldas;
 }
 
@@ -504,7 +527,7 @@ int  proc_wait(struct proc *proc){
         /* wait on semaphore or condition variable */ 
 
         lock_acquire(proc->p_lock);
-        cv_wait(proc->p_cv);
+        cv_wait(proc->p_cv,proc->p_lock);
         lock_release(proc->p_lock);
 
         return_status = proc->p_status;
@@ -523,7 +546,7 @@ void proc_signal_end(struct proc *proc)
 {
 
       lock_acquire(proc->p_lock);
-      cv_signal(proc->p_cv);
+      cv_signal(proc->p_cv,proc->p_lock);
       lock_release(proc->p_lock);
 
 }
@@ -665,28 +688,7 @@ int proc_is_child(struct proc*proc,pid_t child_pid){
 }
 
 
-int destroy_child_list(struct proc* proc){
-	struct child_list* app=proc->children_list;
-    struct proc* child_proc;
 
-
-    while(app!=NULL){
-        proc->children_list=app->next_child;
-
-        child_proc=proc_search(app->child_pid);
-        if(child_proc==NULL)
-            return -1;
-
-        child_proc->parent_pid=-1;
-
-        app->next_child=NULL;
-        kfree(app);
-
-        app=proc->children_list;
-    }
-
-    return 0;
-}
 
 //void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
 //	while(app!=NULL){
