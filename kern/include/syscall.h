@@ -77,7 +77,7 @@ int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
 	int sys_open(userptr_t path, int openflags, mode_t mode, int *errp);
 
-	int sys_close(int fd);
+	int sys_close(int fd,int *retval);
 
 
 
@@ -89,7 +89,7 @@ int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 	int sys_getcwd(const char *buf,size_t buflen,int *retval);	
 	int sys_dup2(int oldfd,int newfd,int *retval);
 	void sys__exit(int status);
-	int sys_waitpid(pid_t pid, userptr_t statusp, int options);
+	int sys_waitpid(pid_t pid, userptr_t statusp, int32_t options);
 	int sys_getpid(pid_t *retpid);
 	int sys_getppid(int *retpid);
 	int sys_fork(struct trapframe *ctf, pid_t *retval);
