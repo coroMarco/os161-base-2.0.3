@@ -560,6 +560,36 @@ void call_enter_forked_process(void *tfv,unsigned long dummy){
 	panic("enter_forked_process returned UNEXPECTED\n");
 }
 
+//function return:
+// -1 error
+// index pid free
+int pid_allocate(void){
+
+	int index=-1;
+	if(processTable.last_pid+1>PROC_MAX){
+		index=processTable.last_pid = 1;
+	}
+	else{
+		index=processTable.last_pid++;
+	}
+
+	while(index!=processTable.last_pid){
+		if(processTable.proc[index]==NULL) break;
+		
+		index++;
+		
+		if(index>PROC_MAX)
+			index=1;
+		
+
+		return index;
+	}
+
+	if(index==processTable.last_pid) return -1;
+
+	return index;
+}
+
 // Add the given process to the process table, at the given index.
 // 0 success, -1 error
 int proc_register_pid(pid_t pid,struct proc *proc){

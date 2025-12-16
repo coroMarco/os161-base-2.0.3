@@ -446,6 +446,7 @@ optfile net	test/nettest.c
 defoption syscalls
 optfile syscalls syscall/file_syscalls.c
 optfile syscalls syscall/proc_syscalls.c
+optfile syscalls syscall/exec_support.c
 
 defoption hello
 optfile hello main/hello.c

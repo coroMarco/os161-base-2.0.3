@@ -70,6 +70,7 @@ struct vnode;
 #endif
 
 //PROG PT.2
+#define PROC_MAX 100
 struct child_list{
 	pid_t child_pid;
 	struct child_list* next_child;

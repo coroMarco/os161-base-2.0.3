@@ -36,8 +36,7 @@ sys_getpid(pid_t *retval)
 
 // Waits for a specific child pid and retrieves its exit status.
 // On success stores return status in *child_status and pid in *retval.
-int
-sys_waitpid(pid_t pid, int *child_status, int wait_options, int32_t *retval)
+int sys_waitpid(pid_t pid, userptr_t child_status, int wait_options, int32_t *retval)
 {
     if (retval == NULL) {
         return EINVAL;
@@ -66,14 +65,20 @@ sys_waitpid(pid_t pid, int *child_status, int wait_options, int32_t *retval)
         return EINVAL;
     }
 
-    struct proc *child_proc = proc_search(pid);
+    struct proc *child_proc = proc_search_pid(pid);
     if (child_proc == NULL) {
         return ESRCH;
     }
 
     // If already exited and no threads remain, return immediately.
     if (child_proc->p_numthreads == 0) {
-        *child_status = child_proc->p_status;
+        if (child_status != NULL) {
+            int status = child_proc->p_status;
+            int err = copyout(&status, child_status, sizeof(status));
+            if (err) {
+                return err;
+            }
+        }
         *retval       = child_proc->p_pid;
         proc_destroy(child_proc);
         return 0;
@@ -81,16 +86,28 @@ sys_waitpid(pid_t pid, int *child_status, int wait_options, int32_t *retval)
 
     // Blocking wait unless WNOHANG is used.
     if (wait_options == WNOHANG) {
-        *child_status = 0;
+        if (child_status != NULL) {
+            int status = 0;
+            int err = copyout(&status, child_status, sizeof(status));
+            if (err) {
+                return err;
+            }
+        }
         *retval       = pid;
         return 0;
     }
 
-    lock_acquire(child_proc->p_locklock);
-    cv_wait(child_proc->p_cv, child_proc->p_locklock);
-    lock_release(child_proc->p_locklock);
+    lock_acquire(child_proc->p_lock);
+    cv_wait(child_proc->p_cv, child_proc->p_lock);
+    lock_release(child_proc->p_lock);
 
-    *child_status = child_proc->p_status;
+    if (child_status != NULL) {
+            int status = 0;
+            int err = copyout(&status, child_status, sizeof(status));
+            if (err) {
+                return err;
+            }
+    }
     *retval       = child_proc->p_pid;
     proc_destroy(child_proc);
 
@@ -111,9 +128,9 @@ sys__exit(int exitcode)
 
     proc_remthread(curthread);
 
-    lock_acquire(p->p_locklock);
-    cv_signal(p->p_cv, p->p_locklock);
-    lock_release(p->p_locklock);
+    lock_acquire(p->p_lock);
+    cv_signal(p->p_cv, p->p_lock);
+    lock_release(p->p_lock);
 
     thread_exit();
 }
@@ -140,7 +157,7 @@ sys_fork(struct trapframe *ctf, pid_t *retval)
         return ENOMEM;
     }
 
-    int err = as_copy(curproc->p_addrspace, &child_proc->p_addrspace);
+    int err = as_copy(curproc->p_addrespace, &child_proc->p_addrespace);
     if (err != 0) {
         proc_destroy(child_proc);
         return err;

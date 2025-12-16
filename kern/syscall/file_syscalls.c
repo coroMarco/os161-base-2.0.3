@@ -134,7 +134,7 @@ int sys_open(userptr_t path, int openflags, mode_t mode, int *errp){
 // starting at the current file offset. The file must be open for writing.
 // On success, *retval is set to the number of bytes actually written and 0 is returned.
 // On error, an appropriate errno value is returned (e.g., EBADF, EFAULT, ENOMEM, EIO).
-ssize_t sys_write(int fd, const void *buf, size_t buflen, int32_t *retval)
+ssize_t sys_write(int fd, userptr_t buf, size_t buflen, int32_t *retval)
 {
     struct openfile *ofile;
     struct vnode    *vnode;
@@ -213,7 +213,7 @@ ssize_t sys_write(int fd, const void *buf, size_t buflen, int32_t *retval)
 // starting at the current file offset. The file must be open for reading.
 // On success, *retval is set to the number of bytes actually read and 0 is returned.
 // On error, an appropriate errno value is returned (e.g., EBADF, EFAULT, ENOMEM, EIO).
-ssize_t sys_read(int fd, const void *buf, size_t buflen, int32_t *retval)
+ssize_t sys_read(int fd, userptr_t buf, size_t buflen, int32_t *retval)
 {
     struct openfile *ofile;
     struct vnode    *vnode;

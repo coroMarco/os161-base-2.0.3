@@ -80,15 +80,15 @@ int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
 
 
-	ssize_t sys_write(int fd, const void *buf, size_t buflen, int32_t *retval);
-	ssize_t sys_read(int fd, const void *buf, size_t buflen, int32_t *retval);
+	ssize_t sys_write(int fd, userptr_t buf, size_t buflen, int32_t *retval);
+	ssize_t sys_read(int fd, userptr_t buf, size_t buflen, int32_t *retval);
 	off_t sys_lseek(int fd,off_t pos,int whence,int *retval);
 	int sys_remove(const char *pathname);
 	int sys_chdir(const char *pathname);
 	int sys_getcwd(const char *buf,size_t buflen,int *retval);	
 	int sys_dup2(int oldfd,int newfd,int *retval);
 	void sys__exit(int status);
-	int sys_waitpid(pid_t pid, userptr_t statusp, int32_t options);
+	int sys_waitpid(pid_t pid, userptr_t child_status, int wait_options, int32_t *retval);
 	int sys_getpid(pid_t *retpid);
 	int sys_getppid(int *retpid);
 	int sys_fork(struct trapframe *ctf, pid_t *retval);

@@ -23,6 +23,8 @@
 #include <syscall.h>
 #include "exec_support.h"
 
+struct semaphore *exec_large_arg_sem = NULL;
+
 // Initialize exec-related global state.
 // Creates the semaphore used to throttle large argv allocations.
 // Panics if the semaphore cannot be created.
