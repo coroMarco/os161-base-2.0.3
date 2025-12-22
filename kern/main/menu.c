@@ -45,7 +45,7 @@
 #include <test.h>
 #include "opt-sfs.h"
 #include "opt-net.h"
-
+#include "current.h"
 /*
  * In-kernel menu and command dispatcher.
  */
@@ -123,6 +123,11 @@ common_prog(int nargs, char **args)
 		return ENOMEM;
 	}
 
+	if(add_new_child(curproc,proc->p_pid)==-1){
+		proc_destroy(proc);
+		return proc;
+	}
+
 	result = thread_fork(args[0] /* thread name */,
 			proc /* new process */,
 			cmd_progthread /* thread function */,
@@ -133,12 +138,18 @@ common_prog(int nargs, char **args)
 		return result;
 	}
 
-	/*
-	 * The new process will be destroyed when the program exits...
-	 * once you write the code for handling that.
-	 */
-
+	pid_t pid = proc->p_pid;
+	int existstatus;
+	pid_t returnpid;
+	int err = sys_waitpid(pid,&existstatus,0,&returnpid);
+	if(err!=0){
+		return err;
+	}else{
+		kprintf("process %d termineted with exit status %d\n",pid,existstatus);
+	}
+	
 	return 0;
+
 }
 
 /*
