@@ -125,7 +125,7 @@ common_prog(int nargs, char **args)
 
 	if(add_new_child(curproc,proc->p_pid)==-1){
 		proc_destroy(proc);
-		return proc;
+		return proc->p_pid;
 	}
 
 	result = thread_fork(args[0] /* thread name */,

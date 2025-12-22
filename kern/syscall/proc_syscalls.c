@@ -36,80 +36,62 @@ sys_getpid(pid_t *retval)
 
 // Waits for a specific child pid and retrieves its exit status.
 // On success stores return status in *child_status and pid in *retval.
-int sys_waitpid(pid_t pid, userptr_t child_status, int wait_options, int32_t *retval)
+int
+sys_waitpid(__pid_t pid, int *status, int options, int *retval)
 {
-    if (retval == NULL) {
+    struct proc *child;
+
+    /* currently only 0 or WNOHANG supported */
+    if (options != 0 && options != WNOHANG) {
         return EINVAL;
     }
-    if (curproc == NULL) {
-        return ESRCH;
-    }
 
-    // A process cannot wait on itself.
-    if (pid == curproc->p_pid) {
-        return ECHILD;
-    }
-
-    // Status pointer must be valid and 4-byte aligned.
-    if (child_status == NULL || ((vaddr_t)child_status % 4) != 0) {
+    /* status pointer must be valid (kernel-space callers, e.g. menu) */
+    if (status == NULL) {
         return EFAULT;
     }
 
-    // Check child relationship.
+    /* check parent/child relationship first */
     if (proc_is_child(curproc, pid) == -1) {
         return ECHILD;
     }
 
-    // Options: only 0 or WNOHANG allowed.
-    if (wait_options != 0 && wait_options != WNOHANG) {
-        return EINVAL;
-    }
-
-    struct proc *child_proc = proc_search_pid(pid);
-    if (child_proc == NULL) {
+    /* find the child process by pid */
+    child = proc_search_pid(pid);
+    if (child == NULL) {
         return ESRCH;
     }
 
-    // If already exited and no threads remain, return immediately.
-    if (child_proc->p_numthreads == 0) {
-        if (child_status != NULL) {
-            int status = child_proc->p_status;
-            int err = copyout(&status, child_status, sizeof(status));
-            if (err) {
-                return err;
-            }
-        }
-        *retval       = child_proc->p_pid;
-        proc_destroy(child_proc);
+    /* Acquire child's lock to inspect/wait on its state */
+    lock_acquire(child->p_lock);
+
+    /* If child already has no threads, it has terminated: return its status */
+    if (child->p_numthreads == 0) {
+        *status = child->p_status;
+        *retval = child->p_pid;
+        lock_release(child->p_lock);
+        proc_destroy(child);
         return 0;
     }
 
-    // Blocking wait unless WNOHANG is used.
-    if (wait_options == WNOHANG) {
-        if (child_status != NULL) {
-            int status = 0;
-            int err = copyout(&status, child_status, sizeof(status));
-            if (err) {
-                return err;
-            }
-        }
-        *retval       = pid;
+    /* Non-blocking request: return immediately with status 0 */
+    if (options == WNOHANG) {
+        *status = 0;
+        *retval = pid;
+        lock_release(child->p_lock);
         return 0;
     }
 
-    lock_acquire(child_proc->p_lock);
-    cv_wait(child_proc->p_cv, child_proc->p_lock);
-    lock_release(child_proc->p_lock);
-
-    if (child_status != NULL) {
-            int status = 0;
-            int err = copyout(&status, child_status, sizeof(status));
-            if (err) {
-                return err;
-            }
+    /* Blocking wait: wait until the child signals termination */
+    while (child->p_numthreads != 0) {
+        cv_wait(child->p_cv, child->p_lock);
     }
-    *retval       = child_proc->p_pid;
-    proc_destroy(child_proc);
+
+    /* child terminated: read status, release lock and destroy proc */
+    *status = child->p_status;
+    *retval = child->p_pid;
+    lock_release(child->p_lock);
+    proc_destroy(child);
 
     return 0;
 }
