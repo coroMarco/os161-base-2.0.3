@@ -117,15 +117,6 @@ syscall(struct trapframe *tf)
 				(mode_t)tf->tf_a2, 
 				&err);
                 break;
-	    
-				case SYS_close:
-	        retval = sys_close((int)tf->tf_a0);
-		if (retval<0) err = ENOENT; 
-                break;
-            case SYS_remove:
-	      /* just ignore: do nothing */
-	        retval = 0;
-                break;
 	    case SYS_write:
         	err = sys_write(
 				(int)tf->tf_a0,
@@ -156,7 +147,7 @@ syscall(struct trapframe *tf)
 			);
 
 			break;
-		case SYS_lseek:
+		case SYS_lseek:{
 			off_t pos=tf->tf_a2;
 			pos<<=32;
 			pos|=tf->tf_a3;
@@ -167,6 +158,7 @@ syscall(struct trapframe *tf)
 				(int*)&retval
 			);
 			break;
+		}
 		case SYS_dup2:
 			err=sys_dup2(
 				(int) tf->tf_a0,
@@ -198,16 +190,11 @@ syscall(struct trapframe *tf)
             	retval = (int32_t)kpid;
         	}
         break;
-    }
-
-	    case SYS_fork:
-	        err = sys_fork(tf,&retval);
-                break;
-		
+    	}
 		case SYS_fork:
 			err=sys_fork(
-				(char*) tf->tf_a0,
-				(char**)tf->tf_a1
+				tf,
+				(pid_t*)&retval
 			);
 			break;
 		case SYS_execv:
