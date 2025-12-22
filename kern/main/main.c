@@ -52,6 +52,7 @@
 #include "autoconf.h"  // for pseudoconfig
 #include "opt-hello.h"
 #include "hello.h"
+#include "exec_support.h"
 /*
  * These two pieces of data are maintained by the makefiles and build system.
  * buildconfig is the name of the config file the kernel was configured with.
