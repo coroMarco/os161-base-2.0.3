@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "preLaunchTask": "Launch sys161",
+            "program": "${workspaceFolder}/../root/kernel",
+            "cwd": "${workspaceFolder}",
+            "sourceFileMap": {
+                "../../": "${workspaceFolder}/kern"
+            },
+            "miDebuggerServerAddress": "unix:${workspaceFolder}/../root/.sockets/gdb",
+            "miDebuggerPath": "${workspaceFolder}/../tools/bin/mips-harvard-os161-gdb",
+            "launchCompleteCommand": "exec-continue",
+            "stopAtEntry": false,
+            "logging": { "trace": true, "traceResponse": true }
+        },
+        {
+            "name": "Compile",
+            "type": "node",
+            "request": "launch",
+            "preLaunchTask": "Compile already configured kernel",
+            "program": "${workspaceFolder}/../root/kernel",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
