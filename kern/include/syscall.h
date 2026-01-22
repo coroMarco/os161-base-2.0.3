@@ -32,10 +32,11 @@
 
 
 #include <cdefs.h> /* for __DEAD */
-#include "opt-syscalls.h"
-#include "opt-fork.h"
-#include "opt-file.h"
 #include <types.h>
+#include <types.h>
+#include <lib.h>
+#include <mips/trapframe.h>
+
 
 struct trapframe; /* from <machine/trapframe.h> */
 
@@ -82,7 +83,7 @@ int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
 	ssize_t sys_write(int fd, userptr_t buf, size_t buflen, int32_t *retval);
 	ssize_t sys_read(int fd, userptr_t buf, size_t buflen, int32_t *retval);
-	off_t sys_lseek(int fd,off_t pos,int whence,int *retval);
+	int sys_lseek(int fd, off_t pos, int whence, int32_t *retval_low32, int32_t *retval_upp32);
 	int sys_remove(const char *pathname);
 	int sys_chdir(const char *pathname);
 	int sys_getcwd(const char *buf,size_t buflen,int *retval);	

@@ -68,7 +68,8 @@ static struct _processTable {
  */
 struct proc *kproc;
 
-/*
+
+ /*
  * G.Cabodi - 2019
  * Initialize support for pid/waitpid.
  */
@@ -85,18 +86,37 @@ struct proc *proc_search_pid(pid_t pid) {
 	return proc;
 }
 
+int proc_is_child(struct proc* proc, pid_t child_pid)
+{	
+	struct child_list* app=proc->children_list;
+
+
+	while(app!=NULL){
+		if(app->child_pid==child_pid){
+			return 0;
+		}
+		app=app->next_child;
+	}
+	
+	return -1;
+}
+
 /*
  * G.Cabodi - 2019
  * Initialize support for pid/waitpid.
  */
+/*
 static void proc_init_waitpid(struct proc *proc, const char *name) {
-  /* search a free index in table using a circular strategy */
+
+  // Search a free index in table using a circular strategy
   int i;
   spinlock_acquire(&processTable.lk);
-  i = processTable.last_pid+1;
+  i = processTable.last_pid + 1;
   proc->p_pid = 0;
-  if (i>MAX_PROC) i=1;
-  while (i!=processTable.last_pid) {
+
+  if (i > MAX_PROC) i = 1;
+
+  while (i != processTable.last_pid) {
     if (processTable.proc[i] == NULL) {
       processTable.proc[i] = proc;
       processTable.last_pid = i;
@@ -104,286 +124,197 @@ static void proc_init_waitpid(struct proc *proc, const char *name) {
       break;
     }
     i++;
-    if (i>MAX_PROC) i=1;
+    if (i > MAX_PROC) i = 1;
   }
   spinlock_release(&processTable.lk);
-  if (proc->p_pid==0) {
+
+  if (proc->p_pid == 0) {
     panic("too many processes. proc table is full\n");
   }
-  proc->p_status = 0;
 
+  proc->p_status = 0;
   proc->p_cv = cv_create(name);
   proc->p_lock = lock_create(name);
+}
+*/
 
-  (void)proc;
-  (void)name;
+
+static int
+proc_setup(struct proc *proc, const char *name)
+{
+    spinlock_acquire(&processTable.lk);
+
+    int start = processTable.last_pid + 1;
+    if (start > MAX_PROC) start = 1;
+
+    int pid = start;
+    do {
+        if (processTable.proc[pid] == NULL) {
+            processTable.proc[pid] = proc;
+            processTable.last_pid = pid;
+            proc->p_pid = pid;
+            break;
+        }
+        pid++;
+        if (pid > MAX_PROC) pid = 1;
+    } while (pid != start);
+
+    spinlock_release(&processTable.lk);
+
+    if (proc->p_pid <= 0) {
+        return -1;
+    }
+
+    proc->parent_pid = -1;
+    proc->children_list = NULL;
+    proc->p_status = 0;
+    proc->p_exited = false;
+
+    proc->p_lock = lock_create(name);
+    proc->p_cv   = cv_create(name);
+
+    if (proc->p_lock == NULL || proc->p_cv == NULL) {
+        return -1;
+    }
+
+    return proc->p_pid;
 }
 
-/*
- * G.Cabodi - 2019
- * Terminate support for pid/waitpid.
- */
-static void proc_end_waitpid(struct proc *proc) {
-  /* remove the process from the table */
-  int i;
-  spinlock_acquire(&processTable.lk);
-  i = proc->p_pid;
-  KASSERT(i>0 && i<=MAX_PROC);
-  processTable.proc[i] = NULL;
-  spinlock_release(&processTable.lk);
-
-
-  cv_destroy(proc->p_cv);
-  lock_destroy(proc->p_lock);
-
-  (void)proc;
-
-}
-
-static int proc_setup(struct proc *proc,const char *name){
-
-	/* ACQUIRING THE SPINLOCK */
-	spinlock_acquire(&processTable.lk);
-	proc->p_pid = -1;
-
-	/* SEARCH FREE INDEX IN THE TABLE USING CIRCULAR STRATEGY */
-	int index = processTable.last_pid + 1;
-	index = (index > MAX_PROC) ? 1 : index;		// skipping [0] (kernel process)
-	while (index != processTable.last_pid) {
-		if (processTable.proc[index] == NULL) {
-			processTable.proc[index] = proc;
-			processTable.last_pid = index;
-			proc->p_pid = index;
-			break;
-		}
-		index++;
-		index = (index > MAX_PROC) ? 1 : index;
-	}
-
-	/* RELEASING THE SPINLOCK */
-	spinlock_release(&processTable.lk);
-	if (proc->p_pid <= 0) {
-		return proc->p_pid;
-	}
-
-	/* PROCESS STATUS INITIALIZATION */
-	proc->p_status = 0;
-
-	/*SETTING FATHER PID AS -1*/
-	/*FOR THE FIRST PROCESS IT WILL NOT BE CHANGED*/
-	proc->parent_pid=-1;
-
-	/*PROCESS CHILDREN LIST INITIALIZATION*/
-	proc->children_list= NULL;
-
-	/* PROCESS CV AND LOCK INITIALIZATION */
-	proc->p_cv = cv_create(name);
-  	proc->p_lock = lock_create(name);
-	if (proc->p_cv == NULL || proc->p_lock == NULL) {
-		return -1;
-	}
-
-	/* TASK COMPLETED SUCCESSFULLY */
-	return proc->p_pid;
-}
 /*
  * Create a proc structure.
  */
-static struct proc *proc_create(const char *name)
+static struct proc *
+proc_create(const char *name)
 {
-	struct proc *proc;
+    struct proc *proc = kmalloc(sizeof(*proc));
+    if (proc == NULL) return NULL;
 
-	proc = kmalloc(sizeof(*proc));
-	if (proc == NULL) {
-		return NULL;
-	}
-	proc->p_name = kstrdup(name);
-	if (proc->p_name == NULL) {
-		kfree(proc);
-		return NULL;
-	}
-
-	proc->p_numthreads = 0;
-	spinlock_init(&proc->p_spinlk);
-
-	/* VM fields */
-	proc->p_addrespace = NULL;
-
-	/* VFS fields */
-	proc->p_cwd = NULL;
-
-	proc_init_waitpid(proc,name);
-
-    bzero(proc->fileTable,OPEN_MAX*sizeof(struct openfile *));
-
-	if(proc_setup(proc,name)<=0){
-		kfree(proc->p_name);
-		kfree(proc);
-		return NULL;
-	}
-
-	return proc;
-}
-
-int destroy_child_list(struct proc* proc){
-	struct child_list* app=proc->children_list;
-    struct proc* child_proc;
-
-
-    while(app!=NULL){
-        proc->children_list=app->next_child;
-
-        child_proc=proc_search_pid(app->child_pid);
-        if(child_proc==NULL)
-            return -1;
-
-        child_proc->parent_pid=-1;
-
-        app->next_child=NULL;
-        kfree(app);
-
-        app=proc->children_list;
+    proc->p_name = kstrdup(name);
+    if (proc->p_name == NULL) {
+        kfree(proc);
+        return NULL;
     }
 
+    proc->p_numthreads = 0;
+    spinlock_init(&proc->p_spinlk);
+
+    proc->p_addrespace = NULL;
+    proc->p_cwd = NULL;
+    bzero(proc->fileTable, OPEN_MAX * sizeof(struct openfile *));
+
+    if (strcmp(name, "[kernel]") != 0) {
+        if (proc_setup(proc, name) < 0) {
+            kfree(proc->p_name);
+            kfree(proc);
+            return NULL;
+        }
+    }
+
+    return proc;
+}
+
+
+int destroy_child_list(struct proc *proc)
+{
+    struct child_list *app = proc->children_list;
+    struct child_list *next;
+
+    while (app != NULL) {
+        next = app->next_child;
+
+        struct proc *child_proc = proc_search_pid(app->child_pid);
+        if (child_proc != NULL) {
+            child_proc->parent_pid = -1; // orfani
+        }
+
+        kfree(app);
+        app = next;
+    }
+
+    proc->children_list = NULL;
     return 0;
 }
 
-static int proc_cleanup(struct proc *proc)
+static void
+proc_cleanup(struct proc *proc)
 {
-	spinlock_acquire(&processTable.lk);
+    spinlock_acquire(&processTable.lk);
+    processTable.proc[proc->p_pid] = NULL;
+    spinlock_release(&processTable.lk);
 
-	int index=proc->p_pid;
-	if(index<0 || index>MAX_PROC || processTable.proc[index]!=proc) {
-		return -1;
-	}
+    destroy_child_list(proc);
 
-	processTable.proc[index]=NULL;
+    if (proc->parent_pid != -1) {
+        struct proc *parent = proc_search_pid(proc->parent_pid);
+        if (parent != NULL) {
+            destroy_child_from_list(parent, proc->p_pid);
+        }
+    }
 
-	cv_destroy(proc->p_cv);
-	lock_destroy(proc->p_lock);
-	spinlock_release(&processTable.lk);	
-
-	if(destroy_child_list(proc)==-1) return -1;
-	
-	if(proc->parent_pid!=-1){
-		struct proc* parent_proc=proc_search_pid(proc->parent_pid);
-		if(proc->parent_pid==kproc->p_pid)	parent_proc=kproc;
-		if(parent_proc==NULL) return -1;
-
-		if(destroy_child_from_list(parent_proc,proc->p_pid)==-1) return -1;
-
-		return 0;
-	}
-
-	return 0;
+    cv_destroy(proc->p_cv);
+    lock_destroy(proc->p_lock);
 }
+
 /*
  * Destroy a proc structure.
  *
  * Note: nothing currently calls this. Your wait/exit code will
  * probably want to do so.
  */
-void proc_destroy(struct proc *proc)
+void
+proc_destroy(struct proc *proc)
 {
-	/*
-	 * You probably want to destroy and null out much of the
-	 * process (particularly the address space) at exit time if
-	 * your wait/exit design calls for the process structure to
-	 * hang around beyond process exit. Some wait/exit designs
-	 * do, some don't.
-	 */
+    KASSERT(proc != NULL);
+    KASSERT(proc != kproc);
 
-	KASSERT(proc != NULL);
-	KASSERT(proc != kproc);
+    if (proc->p_cwd) {
+        VOP_DECREF(proc->p_cwd);
+    }
 
-	/*
-	 * We don't take p_lock in here because we must have the only
-	 * reference to this structure. (Otherwise it would be
-	 * incorrect to destroy it.)
-	 */
+    if (proc->p_addrespace) {
+        struct addrspace *as;
+        if (proc == curproc) {
+            as = proc_setas(NULL);
+            as_deactivate();
+        } else {
+            as = proc->p_addrespace;
+        }
+        as_destroy(as);
+    }
 
-	/* VFS fields */
-	if (proc->p_cwd) {
-		VOP_DECREF(proc->p_cwd);
-		proc->p_cwd = NULL;
-	}
+    KASSERT(proc->p_numthreads == 0);
+    spinlock_cleanup(&proc->p_spinlk);
 
-	/* VM fields */
-	if (proc->p_addrespace) {
-		/*
-		 * If p is the current process, remove it safely from
-		 * p_addrspace before destroying it. This makes sure
-		 * we don't try to activate the address space while
-		 * it's being destroyed.
-		 *
-		 * Also explicitly deactivate, because setting the
-		 * address space to NULL won't necessarily do that.
-		 *
-		 * (When the address space is NULL, it means the
-		 * process is kernel-only; in that case it is normally
-		 * ok if the MMU and MMU- related data structures
-		 * still refer to the address space of the last
-		 * process that had one. Then you save work if that
-		 * process is the next one to run, which isn't
-		 * uncommon. However, here we're going to destroy the
-		 * address space, so we need to make sure that nothing
-		 * in the VM system still refers to it.)
-		 *
-		 * The call to as_deactivate() must come after we
-		 * clear the address space, or a timer interrupt might
-		 * reactivate the old address space again behind our
-		 * back.
-		 *
-		 * If p is not the current process, still remove it
-		 * from p_addrspace before destroying it as a
-		 * precaution. Note that if p is not the current
-		 * process, in order to be here p must either have
-		 * never run (e.g. cleaning up after fork failed) or
-		 * have finished running and exited. It is quite
-		 * incorrect to destroy the proc structure of some
-		 * random other process while it's still running...
-		 */
-		struct addrspace *as;
+    proc_cleanup(proc);
 
-		if (proc == curproc) {
-			as = proc_setas(NULL);
-			as_deactivate();
-		}
-		else {
-			as = proc->p_addrespace;
-			proc->p_addrespace = NULL;
-		}
-		as_destroy(as);
-	}
-
-	KASSERT(proc->p_numthreads == 0);
-	spinlock_cleanup(&proc->p_spinlk);
-
-	if(proc_cleanup(proc) != 0) {
-		panic("proc_destroy: proc_cleanup failed\n");
-	}
-
-	proc_end_waitpid(proc);
-
-	kfree(proc->p_name);
-	kfree(proc);
+    kfree(proc->p_name);
+    kfree(proc);
 }
+
 
 /*
  * Create the process structure for the kernel.
  */
-void proc_bootstrap(void)
+void
+proc_bootstrap(void)
 {
-	kproc = proc_create("[kernel]");
-	if (kproc == NULL) {
-		panic("proc_create for kproc failed\n");
-	}
-#if OPT_WAITPID
-	spinlock_init(&processTable.lk);
-	/* kernel process is not registered in the table */
-	processTable.is_active = 1;
-#endif
+    spinlock_init(&processTable.lk);
+
+    for (int i = 0; i <= MAX_PROC; i++) {
+        processTable.proc[i] = NULL;
+    }
+
+    kproc = proc_create("[kernel]");
+    if (kproc == NULL) {
+        panic("proc_create for kproc failed\n");
+    }
+
+    /* PID 0 RISERVATO al kernel */
+    kproc->p_pid = 0;
+    processTable.proc[0] = kproc;
+    processTable.last_pid = 0;
 }
+
 
 
 /*
@@ -392,6 +323,43 @@ void proc_bootstrap(void)
  * It will have no address space and will inherit the current
  * process's (that is, the kernel menu's) current directory.
  */
+static int console_init(const char *lock_name, struct proc *proc, int fd, int flag) {
+
+	/* ASSIGNMENT OF THE CONSOLE NAME */
+	char *con = kstrdup("con:");
+	if (con == NULL) {
+		return -1;
+	}
+
+	/* ALLOCATING SPACE IN THE FILETABLE */
+	proc->fileTable[fd] = (struct openfile *) kmalloc(sizeof(struct openfile));
+	if (proc->fileTable[fd] == NULL) {
+		kfree(con);
+		return -1;
+	}
+
+	/* OPENING ASSOCIATED FILE */
+	int err = vfs_open(con, flag, 0644, &proc->fileTable[fd]->vn);
+	if (err) {
+		kfree(con);
+		kfree(proc->fileTable[fd]);
+		return -1;
+	}
+	kfree(con);
+
+	/* INITIALIZATION OF VALUES */
+	proc->fileTable[fd]->offset = 0;
+	proc->fileTable[fd]->lock = lock_create(lock_name);
+	if (proc->fileTable[fd]->lock == NULL) {
+		vfs_close(proc->fileTable[fd]->vn);
+		kfree(proc->fileTable[fd]);
+		return -1;
+	}
+	proc->fileTable[fd]->counter_ref = 1;
+	proc->fileTable[fd]->flags = flag;
+
+	return 0;
+}
 struct proc *proc_create_runprogram(const char *name)
 {
 	struct proc *newproc;
@@ -412,6 +380,15 @@ struct proc *proc_create_runprogram(const char *name)
 	 * (We don't need to lock the new process, though, as we have
 	 * the only reference to it.)
 	 */
+	/* CONSOLE INITIALIZATION FOR STDIN, STDOUT AND STDERR */
+	if (console_init("STDIN", newproc, 0, O_RDONLY) == -1) {
+		return NULL;
+	} else if (console_init("STDOUT", newproc, 1, O_WRONLY) == -1) {
+		return NULL;
+	} else if (console_init("STDERR", newproc, 2, O_WRONLY) == -1) {
+		return NULL;
+	}
+
 	spinlock_acquire(&curproc->p_spinlk);
 	if (curproc->p_cwd != NULL) {
 		VOP_INCREF(curproc->p_cwd);
@@ -518,40 +495,33 @@ struct addrspace * proc_setas(struct addrspace *newas)
 
 
 
-        /* G.Cabodi - 2019 - support for waitpid */
-int  proc_wait(struct proc *proc){
+/*
+ * G.Cabodi - 2019 - support for waitpid
+ */
+/*
+int proc_wait(struct proc *proc){
 #if OPT_WAITPID
         int return_status;
-        /* NULL and kernel proc forbidden */
-	KASSERT(proc != NULL);
-	KASSERT(proc != kproc);
 
-        /* wait on semaphore or condition variable */ 
+        // NULL and kernel proc forbidden
 
+        // wait on semaphore or condition variable
         lock_acquire(proc->p_lock);
-        cv_wait(proc->p_cv,proc->p_lock);
+        cv_wait(proc->p_cv, proc->p_lock);
         lock_release(proc->p_lock);
 
         return_status = proc->p_status;
         proc_destroy(proc);
         return return_status;
 #else
-        /* this doesn't synchronize */ 
+        // this doesn't synchronize
         (void)proc;
         return 0;
 #endif
 }
+*/
 
 
-/* G.Cabodi - 2019 - support for waitpid */
-void proc_signal_end(struct proc *proc)
-{
-
-      lock_acquire(proc->p_lock);
-      cv_signal(proc->p_cv,proc->p_lock);
-      lock_release(proc->p_lock);
-
-}
 
 void call_enter_forked_process(void *tfv,unsigned long dummy){
 	(void) dummy;
@@ -563,32 +533,28 @@ void call_enter_forked_process(void *tfv,unsigned long dummy){
 //function return:
 // -1 error
 // index pid free
-int pid_allocate(void){
+int pid_allocate(void)
+{
+    spinlock_acquire(&processTable.lk);
 
-	int index=-1;
-	if(processTable.last_pid+1>PROC_MAX){
-		index=processTable.last_pid = 1;
-	}
-	else{
-		index=processTable.last_pid++;
-	}
+    int start = processTable.last_pid + 1;
+    if (start > MAX_PROC) start = 1;
 
-	while(index!=processTable.last_pid){
-		if(processTable.proc[index]==NULL) break;
-		
-		index++;
-		
-		if(index>PROC_MAX)
-			index=1;
-		
+    int pid = start;
+    do {
+        if (processTable.proc[pid] == NULL) {
+            processTable.last_pid = pid;
+            spinlock_release(&processTable.lk);
+            return pid;
+        }
+        pid++;
+        if (pid > MAX_PROC) pid = 1;
+    } while (pid != start);
 
-		return index;
-	}
-
-	if(index==processTable.last_pid) return -1;
-
-	return index;
+    spinlock_release(&processTable.lk);
+    return -1; // Nessun PID libero
 }
+
 
 // Add the given process to the process table, at the given index.
 // 0 success, -1 error
@@ -612,79 +578,52 @@ void proc_unregister_pid(pid_t pid){
 
 int add_new_child(struct proc *parent, pid_t child_pid)
 {
-	struct child_list *node, *tail;
+	struct child_list* app=parent->children_list;
 
-	if (parent == NULL) {
-		return -1;
-	}
 
 	/* If the list is empty, create the first element. */
-	if (parent->children_list == NULL) {
-		node = (struct child_list *) kmalloc(sizeof(struct child_list));
-		if (node == NULL) {
+	if(parent->children_list==NULL){
+		parent->children_list=(struct child_list *) kmalloc(sizeof(struct child_list));
+		if(parent->children_list==NULL)
 			return -1;
-		}
-		node->child_pid = child_pid;
-		node->next_child = NULL;
-		parent->children_list = node;
+		parent->children_list->next_child=NULL;
+		parent->children_list->child_pid=child_pid;
 		return 0;
 	}
 
 	/* Otherwise, append a new node at the end of the list. */
-	tail = parent->children_list;
-	while (tail->next_child != NULL) {
-		tail = tail->next_child;
+	while(app->next_child!=NULL){
+		app=app->next_child;
 	}
 
-	node = (struct child_list *) kmalloc(sizeof(struct child_list));
-	if (node == NULL) {
+	app->next_child=(struct child_list *) kmalloc(sizeof(struct child_list));
+	if(app->next_child==NULL)
 		return -1;
-	}
-	node->child_pid = child_pid;
-	node->next_child = NULL;
-	tail->next_child = node;
-
+	app->next_child->next_child=NULL;
+	app->next_child->child_pid=child_pid;
 	return 0;
 }
 
-int destroy_child_from_list(struct proc*proc,pid_t child_pid){
-struct child_list* app=proc->children_list;
-	struct child_list* prev_child=NULL;
+int destroy_child_from_list(struct proc *proc, pid_t child_pid)
+{
+    struct child_list *app = proc->children_list;
+    struct child_list *prev = NULL;
 
+    while (app != NULL) {
+        if (app->child_pid == child_pid) {
+            if (prev == NULL) {
+                proc->children_list = app->next_child;
+            } else {
+                prev->next_child = app->next_child;
+            }
+            kfree(app);
+            return 0;
+        }
+        prev = app;
+        app = app->next_child;
+    }
 
-	while(app!=NULL){
-		if(app->child_pid==child_pid){
-			if(prev_child==NULL)
-				proc->children_list=app->next_child;
-			else
-				prev_child->next_child=app->next_child;
-			kfree(app);
-			return 0;
-		}
-		prev_child=app;
-		app=app->next_child;
-	}
-	
-	return -1;
-}
-
-int proc_is_child(struct proc*proc,pid_t child_pid){
-	
-	struct child_list *cur;
-
-	if (proc == NULL) {
-		return -1;
-	}
-
-	cur = proc->children_list;
-	while (cur != NULL) {
-		if (cur->child_pid == child_pid) {
-			return 0;
-		}
-		cur = cur->next_child;
-	}
-
-	return -1;
+    return -1; // Child non trovato
 }
 
 

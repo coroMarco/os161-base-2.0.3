@@ -61,6 +61,7 @@ spinlock_init(struct spinlock *splk)
 void
 spinlock_cleanup(struct spinlock *splk)
 {
+	
 	KASSERT(splk->splk_holder == NULL);
 	KASSERT(spinlock_data_get(&splk->splk_lock) == 0);
 }

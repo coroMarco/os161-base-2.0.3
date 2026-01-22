@@ -155,22 +155,18 @@ lock_create(const char *name)
         }
 
         // add stuff here as needed
+	HANGMAN_LOCKABLEINIT(&lock->lk_hangman, lock->lk_name);
+ /* CREATING THE NEW WAITING CHANNEL AND CHECKING */
+        lock->lk_wchan = wchan_create(lock->lk_name);
+        if (lock->lk_wchan == NULL) {
+                kfree(lock->lk_name);
+                kfree(lock);
+                return NULL;
+        }
 
-#if OPT_SYNCH
-#if USE_SEMAPHORE_FOR_LOCK
-        lock->lk_sem = sem_create(lock->lk_name,1);
-	if (lock->lk_sem == NULL) {
-#else
-	lock->lk_wchan = wchan_create(lock->lk_name);
-	if (lock->lk_wchan == NULL) {
-#endif
-	  kfree(lock->lk_name);
-	  kfree(lock);
-	  return NULL;
-	}
-	lock->lk_owner = NULL;
-	spinlock_init(&lock->lk_lock);
-#endif	
+        /* INITALIZATION OF THE OWNER AND THE SPINLOCK */
+        lock->lk_owner = NULL; // at the beginning, no thread owns this lock
+        spinlock_init(&lock->lk_lock);
         return lock;
 }
 
@@ -179,15 +175,9 @@ lock_destroy(struct lock *lock)
 {
         KASSERT(lock != NULL);
 
-        // add stuff here as needed
-#if OPT_SYNCH
-	spinlock_cleanup(&lock->lk_lock);
-#if USE_SEMAPHORE_FOR_LOCK
-        sem_destroy(lock->lk_sem);
-#else
-	wchan_destroy(lock->lk_wchan);
-#endif
-#endif
+         /* CLEANING UP USED STUFF */
+        spinlock_cleanup(&lock->lk_lock);
+        wchan_destroy(lock->lk_wchan);
         kfree(lock->lk_name);
         kfree(lock);
 }
@@ -195,84 +185,60 @@ lock_destroy(struct lock *lock)
 void
 lock_acquire(struct lock *lock)
 {
-        // Write this
-#if OPT_SYNCH
+        /* BE SURE THAT LOCK EXISTS*/
         KASSERT(lock != NULL);
-	if (lock_do_i_hold(lock)) {
-	  kprintf("AAACKK!\n");
-	}
-	KASSERT(!(lock_do_i_hold(lock)));
 
+        /* BE SURE THAT THE CURRENT THREAD DOES NOT ALREADY OWN THE LOCK */
+        KASSERT(lock_do_i_hold(lock) == false);
+
+        /* BE SURE THE CURRENT THREAD HAS INTERRUPTS DISABLED */
         KASSERT(curthread->t_in_interrupt == false);
 
-#if USE_SEMAPHORE_FOR_LOCK
-/*
- *  G.Cabodi - 2019: P BEFORE(!!!) spinlock acquire. OS161 forbids sleeping/realeasing
- *  the CPU while owning a spinlocks: this could be a cause of deadlock. 
- *  THE spinlock passed to wchan_wait is the only one allowed. 
- *  This is checked in various parts of the code (see for instance wchan_sleep.
- *  as P may result in "wait", it cannot be called while owning the spinlock.
- */
-        P(lock->lk_sem);
-	spinlock_acquire(&lock->lk_lock);        
-#else
-	spinlock_acquire(&lock->lk_lock);        
-	while (lock->lk_owner != NULL) {
-	  wchan_sleep(lock->lk_wchan, &lock->lk_lock);
+        /* ATTEMPT TO ACQUIRE THE SPINLOCK, OTHERWISE SLEEP */
+        spinlock_acquire(&lock->lk_lock); 
+        while (lock->lk_owner != NULL) {
+	        wchan_sleep(lock->lk_wchan, &lock->lk_lock);
         }
-#endif
+
+        /* GET LOCK OWNERSHIP */
         KASSERT(lock->lk_owner == NULL);
-        lock->lk_owner=curthread;
-	spinlock_release(&lock->lk_lock);
-#endif
-        (void)lock;  // suppress warning until code gets written
+        lock->lk_owner = curthread;
+
+        /* RELEASING SPINLOCK */
+        spinlock_release(&lock->lk_lock);
 }
 
 void
 lock_release(struct lock *lock)
 {
-        // Write this
-#if OPT_SYNCH
-	KASSERT(lock != NULL);
-	KASSERT(lock_do_i_hold(lock));
-	spinlock_acquire(&lock->lk_lock);
-        lock->lk_owner=NULL;
-	/*  G.Cabodi - 2019: no problem here owning a spinlock, as V/wchan_wakeone 
-	    do not lead to wait state */
-#if USE_SEMAPHORE_FOR_LOCK
-        V(lock->lk_sem);
-#else
-        wchan_wakeone(lock->lk_wchan, &lock->lk_lock);
-#endif
-	spinlock_release(&lock->lk_lock);
-#endif
+    /* BE SURE THAT LOCK EXISTS*/
+        KASSERT(lock != NULL);
 
-        (void)lock;  // suppress warning until code gets written
+        /* BE SURE THAT THE CURRENT THREAD OWNS THE LOCK */
+        KASSERT(lock_do_i_hold(lock) == true);
+
+        /* ACQUIRE THE LOCK AND CLEAR THE OWNERSHIP */
+        spinlock_acquire(&lock->lk_lock);
+        lock->lk_owner = NULL;
+
+        /* SIGNALLING THREADS WAITING FOR THE LOCK */
+        wchan_wakeone(lock->lk_wchan, &lock->lk_lock);
+
+        /* RELEASING THE LOCK */
+        spinlock_release(&lock->lk_lock);
 }
 
 bool
 lock_do_i_hold(struct lock *lock)
 {
-        // Write this
-#if OPT_SYNCH
-        bool res;
-	/*  G.Cabodi - 2019: this could possibly work without spinlock for mutual 
-	    exclusion, which could simplify the semaphore-based solution, by 
-	    removing the spinlock. 
-	    Whenever the current thread owns the lock, the test is safe without 
-	    guaranteeing mutual exclusion. 
-	    If NOT the owner, a wrong verdict could happen (very low chance!!!)
-            by wrongly reading a pointer == curthread. However, using the spinlock 
-	    is good practice for shared data. */
+/* CHECKING WHETHER THE CURRENT THREAD IS ALREADY THE OWNER OF THE LOCK */
+    bool res=true;
 	spinlock_acquire(&lock->lk_lock);
-	res = lock->lk_owner == curthread;
+	res = (lock->lk_owner == curthread);
 	spinlock_release(&lock->lk_lock);
 	return res;
-#endif
 
-        (void)lock;  // suppress warning until code gets written
-
-        return true; // dummy until code gets written
+	
 }
 
 ////////////////////////////////////////////////////////////
@@ -297,7 +263,6 @@ cv_create(const char *name)
         }
 
         // add stuff here as needed
-#if OPT_SYNCH
 	cv->cv_wchan = wchan_create(cv->cv_name);
 	if (cv->cv_wchan == NULL) {
 	        kfree(cv->cv_name);
@@ -305,20 +270,16 @@ cv_create(const char *name)
 		return NULL;
 	}
         spinlock_init(&cv->cv_lock);
-#endif
         return cv;
 }
 
 void
 cv_destroy(struct cv *cv)
 {
-        KASSERT(cv != NULL);
 
         // add stuff here as needed
-#if OPT_SYNCH
-	spinlock_cleanup(&cv->cv_lock);
-	wchan_destroy(cv->cv_wchan);
-#endif
+		spinlock_cleanup(&cv->cv_lock);
+		wchan_destroy(cv->cv_wchan);
         kfree(cv->cv_name);
         kfree(cv);
 }
@@ -327,8 +288,7 @@ void
 cv_wait(struct cv *cv, struct lock *lock)
 {
         // Write this
-#if OPT_SYNCH
-        KASSERT(lock != NULL);
+    KASSERT(lock != NULL);
 	KASSERT(cv != NULL);
 	KASSERT(lock_do_i_hold(lock));
 
@@ -342,7 +302,6 @@ cv_wait(struct cv *cv, struct lock *lock)
 	   (possibly) going to wait state in lock_acquire. 
 	   Atomicity wakeup+lock_acquire not guaranteed (but not necessary!) */
 	lock_acquire(lock);
-#endif
 
         (void)cv;    // suppress warning until code gets written
         (void)lock;  // suppress warning until code gets written
@@ -352,8 +311,7 @@ void
 cv_signal(struct cv *cv, struct lock *lock)
 {
         // Write this
-#if OPT_SYNCH
-        KASSERT(lock != NULL);
+    KASSERT(lock != NULL);
 	KASSERT(cv != NULL);
 	KASSERT(lock_do_i_hold(lock));
 	/* g.Cabodi - 2019: here the spinlock is NOT required, as no atomic operation 
@@ -361,7 +319,6 @@ cv_signal(struct cv *cv, struct lock *lock)
 	spinlock_acquire(&cv->cv_lock);
 	wchan_wakeone(cv->cv_wchan,&cv->cv_lock);
 	spinlock_release(&cv->cv_lock);
-#endif
 	(void)cv;    // suppress warning until code gets written
 	(void)lock;  // suppress warning until code gets written
 }
@@ -370,15 +327,13 @@ void
 cv_broadcast(struct cv *cv, struct lock *lock)
 {
 	// Write this
-#if OPT_SYNCH
-        KASSERT(lock != NULL);
+    KASSERT(lock != NULL);
 	KASSERT(cv != NULL);
 	KASSERT(lock_do_i_hold(lock));
 	/* G.Cabodi - 2019: see comment on spinlocks in cv_signal */
 	spinlock_acquire(&cv->cv_lock);
 	wchan_wakeall(cv->cv_wchan,&cv->cv_lock);
 	spinlock_release(&cv->cv_lock);
-#endif
 	(void)cv;    // suppress warning until code gets written
 	(void)lock;  // suppress warning until code gets written
 }

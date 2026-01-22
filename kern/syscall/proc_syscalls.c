@@ -20,7 +20,8 @@
 
 // Returns the pid of the current process in *retval.
 // Never fails once curproc is valid.
-int
+//TODO
+/*int
 sys_getpid(pid_t *retval)
 {
     if (retval == NULL) {
@@ -32,90 +33,111 @@ sys_getpid(pid_t *retval)
 
     *retval = curproc->p_pid;
     return 0;
+}*/
+
+int sys_getpid(pid_t *retval) {
+
+    /* RETRIEVING PID */
+    KASSERT(curproc != NULL);
+    *retval = curproc->p_pid;
+
+    /* getpid() DOES NOT FAIL.  */
+    return 0;   
 }
 
 // Waits for a specific child pid and retrieves its exit status.
 // On success stores return status in *child_status and pid in *retval.
-int
-sys_waitpid(__pid_t pid, int *status, int options, int *retval)
+int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
 {
-    struct proc *child;
+    if (pid <= 0) return ESRCH;
+    if (curproc == NULL) return ESRCH;
 
-    /* currently only 0 or WNOHANG supported */
-    if (options != 0 && options != WNOHANG) {
-        return EINVAL;
-    }
-
-    /* status pointer must be valid (kernel-space callers, e.g. menu) */
-    if (status == NULL) {
-        return EFAULT;
-    }
-
-    /* check parent/child relationship first */
-    if (proc_is_child(curproc, pid) == -1) {
+    /* Check child relationship */
+    if (proc_is_child(curproc, pid) != 0) {
         return ECHILD;
     }
 
-    /* find the child process by pid */
-    child = proc_search_pid(pid);
-    if (child == NULL) {
-        return ESRCH;
-    }
+    struct proc *child = proc_search_pid(pid);
+    if (child == NULL) return ESRCH;
 
-    /* Acquire child's lock to inspect/wait on its state */
+    if (options != 0 && options != WNOHANG) return EINVAL;
+
     lock_acquire(child->p_lock);
 
-    /* If child already has no threads, it has terminated: return its status */
-    if (child->p_numthreads == 0) {
-        *status = child->p_status;
-        *retval = child->p_pid;
-        lock_release(child->p_lock);
-        proc_destroy(child);
-        return 0;
-    }
-
-    /* Non-blocking request: return immediately with status 0 */
     if (options == WNOHANG) {
-        *status = 0;
-        *retval = pid;
-        lock_release(child->p_lock);
-        return 0;
+        if (!child->p_exited) {
+            *retval = 0;
+            lock_release(child->p_lock);
+            return 0;
+        }
+    } else {
+        while (!child->p_exited) {
+            cv_wait(child->p_cv, child->p_lock);
+        }
     }
 
-    /* Blocking wait: wait until the child signals termination */
-    while (child->p_numthreads != 0) {
-        cv_wait(child->p_cv, child->p_lock);
+    /* Copy exit status safely to user memory */
+    if (status != NULL) {
+        int err = copyout(&child->p_status, (userptr_t)status, sizeof(int));
+        if (err) {
+            lock_release(child->p_lock);
+            return err; // EFAULT
+        }
     }
 
-    /* child terminated: read status, release lock and destroy proc */
-    *status = child->p_status;
-    *retval = child->p_pid;
+    *retval = pid;
+
     lock_release(child->p_lock);
+
+   /* Remove child from parent's list */
+    destroy_child_from_list(curproc, pid);
+
+    /* Mark child as reaped */
+    child->parent_pid = -1;
+
+    /* Now it is safe to destroy */
     proc_destroy(child);
+
 
     return 0;
 }
 
 // Terminates the current process and notifies parent waiters.
 // Does not return.
-void
-sys__exit(int exitcode)
+void sys__exit(int exitcode)
 {
-    if (curproc == NULL) {
-        thread_exit();
-    }
-
     struct proc *p = curproc;
-    p->p_status = _MKWAIT_EXIT(exitcode);
+    KASSERT(p != NULL);
 
+    /* Set exit status and mark as exited */
+    p->p_status = _MKWAIT_EXIT(exitcode);
+    p->p_exited = true;
+
+    /* Remove this thread from the process */
     proc_remthread(curthread);
 
+    /* Wake up any waiters */
     lock_acquire(p->p_lock);
-    cv_signal(p->p_cv, p->p_lock);
+    cv_broadcast(p->p_cv, p->p_lock);
     lock_release(p->p_lock);
 
+    /* Detach children (orphan them) */
+    struct child_list *child = p->children_list;
+    while (child != NULL) {
+        struct proc *child_proc = proc_search_pid(child->child_pid);
+        if (child_proc != NULL) {
+            child_proc->parent_pid = -1;
+        }
+        child = child->next_child;
+    }
+    /* Non distruggere i figli orfani qui! */
+
+    /* Thread terminates here */
     thread_exit();
+
+    panic("sys_exit: thread_exit returned unexpectedly\n");
 }
+
 
 // Creates a duplicate process and initializes its execution context.
 // Returns 0 in the child and child's pid in the parent.
@@ -154,7 +176,8 @@ sys_fork(struct trapframe *ctf, pid_t *retval)
     memmove(child_tf_copy, ctf, sizeof(struct trapframe));
 
     if (add_new_child(curproc, child_proc->p_pid) == -1) {
-        kfree(child_tf_copy);
+        //TODO
+        //kfree(child_tf_copy);
         proc_destroy(child_proc);
         return ENOMEM;
     }
@@ -163,8 +186,9 @@ sys_fork(struct trapframe *ctf, pid_t *retval)
 
     err = proc_register_pid((pid_t)new_pid, child_proc);
     if (err == -1) {
-        kfree(child_tf_copy);
-        proc_destroy(child_proc);
+        //TODO
+        //kfree(child_tf_copy);
+        //proc_destroy(child_proc);
         return ENOMEM;
     }
 
@@ -172,9 +196,9 @@ sys_fork(struct trapframe *ctf, pid_t *retval)
                       child_proc,
                       call_enter_forked_process,
                       (void *)child_tf_copy,
-                      0);
+                      (unsigned long)0);
 
-    if (err != 0) {
+    if (err) {
         kfree(child_tf_copy);
         proc_destroy(child_proc);
         return err;

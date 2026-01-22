@@ -87,15 +87,9 @@ struct lock {
         char *lk_name;
         // add what you need here
         // (don't forget to mark things volatile as needed)
-#if OPT_SYNCH
-#if USE_SEMAPHORE_FOR_LOCK
-	struct semaphore *lk_sem;
-#else
 	struct wchan *lk_wchan;
-#endif
 	struct spinlock lk_lock;
         volatile struct thread *lk_owner;
-#endif
 };
 
 struct lock *lock_create(const char *name);
@@ -135,10 +129,8 @@ struct cv {
         char *cv_name;
         // add what you need here
         // (don't forget to mark things volatile as needed)
-#if OPT_SYNCH
 	struct wchan *cv_wchan;
 	struct spinlock cv_lock;
-#endif
 };
 
 struct cv *cv_create(const char *name);

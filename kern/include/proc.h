@@ -63,11 +63,9 @@ struct vnode;
  * without sleeping.
  */
 
-#if OPT_WAITPID
 /* G.Cabodi - 2019 - implement waitpid: 
    synch with semaphore (1) or cond.var.(0) */
 #define USE_SEMAPHORE_FOR_WAITPID 1
-#endif
 
 //PROG PT.2
 #define PROC_MAX 100
@@ -94,6 +92,7 @@ struct proc {
 	struct child_list* children_list;
 	struct cv *p_cv;
 	struct lock *p_lock;
+	bool p_exited;
 
 };
 
@@ -126,7 +125,6 @@ int proc_wait(struct proc *proc);
 /* get proc from pid */
 struct proc *proc_search_pid(pid_t pid);
 /* signal end/exit of process */
-void proc_signal_end(struct proc *proc);
 
 void proc_file_table_copy(struct proc *psrc, struct proc *pdest);
 

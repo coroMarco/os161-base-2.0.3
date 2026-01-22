@@ -35,6 +35,7 @@
 #include <current.h>
 #include <addrspace.h>
 #include <syscall.h>
+#include <copyinout.h>
 
 
 /*
@@ -82,6 +83,7 @@ syscall(struct trapframe *tf)
 	int32_t retval;
 	int err=0;
 
+
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
 	KASSERT(curthread->t_iplhigh_count == 0);
@@ -98,6 +100,7 @@ syscall(struct trapframe *tf)
 	 */
 
 	retval = 0;
+
 
 	switch (callno) {
 	    case SYS_reboot:
@@ -147,18 +150,32 @@ syscall(struct trapframe *tf)
 			);
 
 			break;
-		case SYS_lseek:{
-			off_t pos=tf->tf_a2;
-			pos<<=32;
-			pos|=tf->tf_a3;
-			err=sys_lseek(
-				(int)tf->tf_a0,
-				pos,
-				*(int*)(tf->tf_sp+16),
-				(int*)&retval
-			);
-			break;
-		}
+		case SYS_lseek: {
+    off_t pos;
+    pos = ((off_t)tf->tf_a2 << 32) | tf->tf_a3;
+
+    int whence;
+    int32_t retval_low, retval_up;
+    int err;
+
+    err = copyin((userptr_t)(tf->tf_sp + 16), &whence, sizeof(int));
+    if (err) {
+        tf->tf_v0 = err;
+        tf->tf_v1 = 1;
+        break;
+    }
+
+    err = sys_lseek(tf->tf_a0, pos, whence, &retval_low, &retval_up);
+
+    if (err) {
+        tf->tf_v0 = err;
+        tf->tf_v1 = 1;
+    } else {
+        tf->tf_v0 = retval_up;   // parte alta
+        tf->tf_v1 = retval_low;  // parte bassa
+    }
+    break;
+}
 		case SYS_dup2:
 			err=sys_dup2(
 				(int) tf->tf_a0,

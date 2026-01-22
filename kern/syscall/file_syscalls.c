@@ -156,7 +156,7 @@ ssize_t sys_write(int fd, userptr_t buf, size_t buflen, int32_t *retval)
     }
 
     // file must be open for writing
-    if (ofile->flags == O_RDONLY) {
+    if ((ofile->flags & O_ACCMODE) == O_RDONLY){
         return EBADF;
     }
 
@@ -395,78 +395,81 @@ int sys_getcwd(const char *buf,size_t buflen,int *retval){
 
 }
 
-off_t sys_lseek(int fd,off_t pos,int whence,int *retval){
+int sys_lseek(int fd, off_t pos, int whence, int32_t *retval_low32, int32_t *retval_upp32) {
 
-      KASSERT(curproc != NULL);
+    off_t retval = -1;
 
-      if (fd < 0 || fd >= OPEN_MAX || curproc->fileTable[fd] == NULL) {
-        return EBADF;
-      }
+    /* SOME ASSERTIONS */
+    KASSERT(curproc != NULL);
 
-      if(!VOP_ISSEEKABLE(curproc->fileTable[fd]->vn)){
-        return ESPIPE;
-      }
+    /* CHECKING INPUT ARGUMENTS */
+    if (fd < 0 || fd >= OPEN_MAX) {
+        return EBADF;   // invalid file handler
+    } else if (curproc->fileTable[fd] == NULL) {
+        return EBADF;   // invalid file handler
+    }
 
-      struct openfile *of= curproc->fileTable[fd];
+    /* CHECKING FILE */
+    if (!VOP_ISSEEKABLE(curproc->fileTable[fd]->vn)) {
+        return ESPIPE;  // fd refers to an object which does not support seeking.
+    }
 
-      lock_acquire(of->lock);
-      
-      int newpos=0;
-      int err;
-      struct stat info;
-      
-      
-      switch(whence){
+    /* SETTING RETURN VALUE BASED ON WHENCE */
+    struct openfile *of = curproc->fileTable[fd];
+    int err;
+    struct stat info;
+    lock_acquire(of->lock);
+    retval = of->offset;
+    switch (whence) {
         case SEEK_SET:
-
-              newpos=pos;
-              
-              if(pos<0) {
+            if (pos < 0) {
                 lock_release(of->lock);
                 return EINVAL;
-              }
-              
-              of->offset=pos;
+            }
+            retval = pos;
+        break;
 
-            break;
         case SEEK_CUR:
-            
-              newpos=of->offset+pos;
-              
-              if(newpos<0) {
+            if (pos < 0 && -pos > of->offset) {
                 lock_release(of->lock);
                 return EINVAL;
-              }
-
-              of->offset=newpos;
-            
-            break;
+            }
+            retval = of->offset + pos;
+        break;
+        
         case SEEK_END:
-
-            err = VOP_STAT(of->vn,&info);
-            if(err){
-              lock_release(of->lock);
-              return err;
+            err = VOP_STAT(of->vn, &info);
+            if (err) {
+                lock_release(of->lock);
+                return err;
             }
-
-            if(pos<0 && -pos>info.st_size){
-              lock_release(of->lock);
-              return EINVAL;
+            if (pos < 0 && -pos > info.st_size) {
+                lock_release(of->lock);
+                return EINVAL;
             }
-            of->offset=info.st_size-pos;
-          break;
+            retval = info.st_size - pos;
+        break;
+
         default:
             lock_release(of->lock);
             return EINVAL;
-          break;     
-      }
+    }
 
-      lock_release(of->lock);
+    /* TODO: MAYBE TRY TO SEEK THE NEW CURRENT POSITION AND CHECK IF IT WORKS (?) */
 
-      *retval=newpos;
-      return 0;
-      
+    /* UPDATING FILE */
+    of->offset = retval;
+    lock_release(of->lock);
+
+    /* SPLIT 64BIT RESULT INTO 32 BIT NUMBERS */
+    *retval_low32 = (int32_t) (retval >> 32);                   /* most significant bits */
+    *retval_upp32 = (int32_t) (retval & 0x00000000ffffffff);    /* least significant bits */
+
+    /* TASK COMPLETED SUCCESSFULLY */
+    return 0;
 }
+
+
 
 int sys_dup2(int oldfd,int newfd,int *retval){
 
