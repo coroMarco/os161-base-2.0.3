@@ -395,79 +395,99 @@ int sys_getcwd(const char *buf,size_t buflen,int *retval){
 
 }
 
-int sys_lseek(int fd, off_t pos, int whence, int32_t *retval_low32, int32_t *retval_upp32) {
+off_t
+sys_lseek(int fd, off_t offset, int whence, int *err)
+{
+    struct openfile *of;
+    struct stat statbuf;
+    off_t newpos;
+    int result;
 
-    off_t retval = -1;
-
-    /* SOME ASSERTIONS */
-    KASSERT(curproc != NULL);
-
-    /* CHECKING INPUT ARGUMENTS */
+    /* Check file descriptor range */
     if (fd < 0 || fd >= OPEN_MAX) {
-        return EBADF;   // invalid file handler
-    } else if (curproc->fileTable[fd] == NULL) {
-        return EBADF;   // invalid file handler
+        *err = EBADF;
+        return -1;
     }
 
-    /* CHECKING FILE */
-    if (!VOP_ISSEEKABLE(curproc->fileTable[fd]->vn)) {
-        return ESPIPE;  // fd refers to an object which does not support seeking.
+    /* Check open file */
+    of = curproc->fileTable[fd];
+    if (of == NULL) {
+        *err = EBADF;
+        return -1;
     }
 
-    /* SETTING RETURN VALUE BASED ON WHENCE */
-    struct openfile *of = curproc->fileTable[fd];
-    int err;
-    struct stat info;
     lock_acquire(of->lock);
-    retval = of->offset;
+
+    /*
+     * Devices and special files:
+     * vnode can be NULL or not seekable
+     */
+    if (of->vn == NULL) {
+        *err = ESPIPE;
+        lock_release(of->lock);
+        return -1;
+    }
+
+    /* Check if seekable */
+    if (!VOP_ISSEEKABLE(of->vn)) {
+        *err = ESPIPE;
+        lock_release(of->lock);
+        return -1;
+    }
+
+    /* Check whence */
+    if (whence != SEEK_SET &&
+        whence != SEEK_CUR &&
+        whence != SEEK_END) {
+        *err = EINVAL;
+        lock_release(of->lock);
+        return -1;
+    }
+
+    /* Compute new offset */
     switch (whence) {
         case SEEK_SET:
-            if (pos < 0) {
-                lock_release(of->lock);
-                return EINVAL;
-            }
-            retval = pos;
-        break;
+            newpos = offset;
+            break;
 
         case SEEK_CUR:
-            if (pos < 0 && -pos > of->offset) {
-                lock_release(of->lock);
-                return EINVAL;
-            }
-            retval = of->offset + pos;
-        break;
-        
+            newpos = of->offset + offset;
+            break;
+
         case SEEK_END:
-            err = VOP_STAT(of->vn, &info);
-            if (err) {
+            result = VOP_STAT(of->vn, &statbuf);
+            if (result) {
+                *err = result;
                 lock_release(of->lock);
-                return err;
+                return -1;
             }
-            if (pos < 0 && -pos > info.st_size) {
-                lock_release(of->lock);
-                return EINVAL;
-            }
-            retval = info.st_size - pos;
-        break;
+            newpos = statbuf.st_size + offset;
+            break;
 
         default:
+            /* Should never happen */
+            *err = EINVAL;
             lock_release(of->lock);
-            return EINVAL;
+            return -1;
     }
 
-    /* TODO: MAYBE TRY TO SEEK THE NEW CURRENT POSITION AND CHECK IF IT WORKS (?) */
+    /* New offset must be non-negative */
+    if (newpos < 0) {
+        *err = EINVAL;
+        lock_release(of->lock);
+        return -1;
+    }
 
-    /* UPDATING FILE */
-    of->offset = retval;
+    /* Update file offset */
+    of->offset = newpos;
+
     lock_release(of->lock);
 
-    /* SPLIT 64BIT RESULT INTO 32 BIT NUMBERS */
-    *retval_low32 = (int32_t) (retval >> 32);                   /* most significant bits */
-    *retval_upp32 = (int32_t) (retval & 0x00000000ffffffff);    /* least significant bits */
-
-    /* TASK COMPLETED SUCCESSFULLY */
-    return 0;
+    *err = 0;
+    return newpos;
 }
+
+
 
 
 

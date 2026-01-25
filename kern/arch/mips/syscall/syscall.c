@@ -83,6 +83,9 @@ syscall(struct trapframe *tf)
 	int32_t retval;
 	int err=0;
 
+	int whence;
+	off_t offset_lseek;
+	off_t ret_offset = 0;
 
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
@@ -150,32 +153,18 @@ syscall(struct trapframe *tf)
 			);
 
 			break;
-		case SYS_lseek: {
-    off_t pos;
-    pos = ((off_t)tf->tf_a2 << 32) | tf->tf_a3;
-
-    int whence;
-    int32_t retval_low, retval_up;
-    int err;
-
-    err = copyin((userptr_t)(tf->tf_sp + 16), &whence, sizeof(int));
-    if (err) {
-        tf->tf_v0 = err;
-        tf->tf_v1 = 1;
-        break;
-    }
-
-    err = sys_lseek(tf->tf_a0, pos, whence, &retval_low, &retval_up);
-
-    if (err) {
-        tf->tf_v0 = err;
-        tf->tf_v1 = 1;
-    } else {
-        tf->tf_v0 = retval_up;   // parte alta
-        tf->tf_v1 = retval_low;  // parte bassa
-    }
-    break;
-}
+		case SYS_lseek:
+		offset_lseek = ((off_t)tf->tf_a2 << 32) | tf->tf_a3;
+		err = copyin((userptr_t)(tf->tf_sp + 16), &whence, sizeof(int));
+		if (!err)
+		{
+			ret_offset = sys_lseek(
+				(int)tf->tf_a0,
+				(off_t)offset_lseek,
+				(int)whence,
+				(int *)&err);
+		}
+		break;
 		case SYS_dup2:
 			err=sys_dup2(
 				(int) tf->tf_a0,
@@ -239,8 +228,18 @@ syscall(struct trapframe *tf)
 	}
 	else {
 		/* Success. */
-		tf->tf_v0 = retval;
-		tf->tf_a3 = 0;      /* signal no error */
+		if (callno == SYS_lseek)
+		{
+			/* high part */
+			tf->tf_v0 = (int32_t)(ret_offset >> 32);
+			/* low part */
+			tf->tf_v1 = (int32_t)(ret_offset & 0xffffffff);
+		}
+		else
+		{
+			tf->tf_v0 = retval;
+		}
+		tf->tf_a3 = 0; /* signal no error */      /* signal no error */
 	}
 
 	/*
