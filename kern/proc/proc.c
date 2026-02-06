@@ -105,40 +105,6 @@ int proc_is_child(struct proc* proc, pid_t child_pid)
  * G.Cabodi - 2019
  * Initialize support for pid/waitpid.
  */
-/*
-static void proc_init_waitpid(struct proc *proc, const char *name) {
-
-  // Search a free index in table using a circular strategy
-  int i;
-  spinlock_acquire(&processTable.lk);
-  i = processTable.last_pid + 1;
-  proc->p_pid = 0;
-
-  if (i > MAX_PROC) i = 1;
-
-  while (i != processTable.last_pid) {
-    if (processTable.proc[i] == NULL) {
-      processTable.proc[i] = proc;
-      processTable.last_pid = i;
-      proc->p_pid = i;
-      break;
-    }
-    i++;
-    if (i > MAX_PROC) i = 1;
-  }
-  spinlock_release(&processTable.lk);
-
-  if (proc->p_pid == 0) {
-    panic("too many processes. proc table is full\n");
-  }
-
-  proc->p_status = 0;
-  proc->p_cv = cv_create(name);
-  proc->p_lock = lock_create(name);
-}
-*/
-
-
 static int
 proc_setup(struct proc *proc, const char *name)
 {
@@ -360,6 +326,7 @@ static int console_init(const char *lock_name, struct proc *proc, int fd, int fl
 
 	return 0;
 }
+
 struct proc *proc_create_runprogram(const char *name)
 {
 	struct proc *newproc;
@@ -498,31 +465,6 @@ struct addrspace * proc_setas(struct addrspace *newas)
 /*
  * G.Cabodi - 2019 - support for waitpid
  */
-/*
-int proc_wait(struct proc *proc){
-#if OPT_WAITPID
-        int return_status;
-
-        // NULL and kernel proc forbidden
-
-        // wait on semaphore or condition variable
-        lock_acquire(proc->p_lock);
-        cv_wait(proc->p_cv, proc->p_lock);
-        lock_release(proc->p_lock);
-
-        return_status = proc->p_status;
-        proc_destroy(proc);
-        return return_status;
-#else
-        // this doesn't synchronize
-        (void)proc;
-        return 0;
-#endif
-}
-*/
-
-
-
 void call_enter_forked_process(void *tfv,unsigned long dummy){
 	(void) dummy;
 	struct trapframe *tf = (struct trapframe *)tfv;
@@ -625,19 +567,5 @@ int destroy_child_from_list(struct proc *proc, pid_t child_pid)
 
     return -1; // Child non trovato
 }
-
-
-
-
-//void  proc_file_table_copy(struct proc *psrc, struct proc *pdest) {
-//	while(app!=NULL){
-//		if(app->child_pid==child_pid){
-//			return 0;
-//		}
-//		app=app->next_child;
-//	}
-//	
-//	return -1;
-//}
 
 
