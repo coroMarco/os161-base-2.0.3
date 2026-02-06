@@ -18,23 +18,6 @@
 #include "syscall.h"
 #include "exec_support.h"
 
-// Returns the pid of the current process in *retval.
-// Never fails once curproc is valid.
-//TODO
-/*int
-sys_getpid(pid_t *retval)
-{
-    if (retval == NULL) {
-        return EINVAL;
-    }
-    if (curproc == NULL) {
-        return ESRCH;
-    }
-
-    *retval = curproc->p_pid;
-    return 0;
-}*/
-
 int sys_getpid(pid_t *retval) {
 
     /* RETRIEVING PID */
